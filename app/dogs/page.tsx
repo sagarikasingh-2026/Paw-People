@@ -30,7 +30,7 @@ export default function DogsPage() {
   )
 
   return (
-    <div className="pb-nav">
+    <div className="pb-24 md:pb-0">
       <div className="px-4 pt-6 pb-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold text-gray-900">Patients</h1>

@@ -10,6 +10,10 @@ export function formatDate(dateStr: string) {
   return format(parseISO(dateStr), 'dd MMM yyyy')
 }
 
+export function formatDateShort(dateStr: string) {
+  return format(parseISO(dateStr), 'dd MMM')
+}
+
 export function getFollowUpUrgency(dueDateStr: string): 'overdue' | 'today' | 'tomorrow' | 'upcoming' {
   const date = parseISO(dueDateStr)
   if (isPast(date) && !isToday(date)) return 'overdue'
@@ -35,4 +39,22 @@ export function treatmentTypeBadgeColor(type: string) {
     case 'General': return 'bg-gray-100 text-gray-700'
     default: return 'bg-gray-100 text-gray-700'
   }
+}
+
+export function timeOfDayColor(tod: string) {
+  switch (tod) {
+    case 'Morning': return 'bg-amber-100 text-amber-700'
+    case 'Evening': return 'bg-indigo-100 text-indigo-700'
+    default: return 'bg-gray-100 text-gray-600'
+  }
+}
+
+export async function uploadFile(file: File, path: string): Promise<string | null> {
+  const { supabase } = await import('./supabase')
+  const { data, error } = await supabase.storage
+    .from('paw-people')
+    .upload(path, file, { upsert: true })
+  if (error) { console.error('Upload error:', error); return null }
+  const { data: urlData } = supabase.storage.from('paw-people').getPublicUrl(data.path)
+  return urlData.publicUrl
 }
