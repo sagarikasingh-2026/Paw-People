@@ -4,10 +4,7 @@
 
 html, body {
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: white;
   color: #0a0a0a;
 }
 
 * { box-sizing: border-box; }
-
-.pb-nav { padding-bottom: 80px; }
