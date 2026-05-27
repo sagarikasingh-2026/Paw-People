@@ -45,8 +45,21 @@ export function timeOfDayColor(tod: string) {
   switch (tod) {
     case 'Morning': return 'bg-amber-100 text-amber-700'
     case 'Evening': return 'bg-indigo-100 text-indigo-700'
+    case 'Both': return 'bg-purple-100 text-purple-700'
     default: return 'bg-gray-100 text-gray-600'
   }
+}
+
+// Sanitize quantity to positive number with up to 2 decimals
+export function sanitizeQuantity(raw: string): string {
+  if (raw === '' || raw === '.') return raw
+  let v = raw.replace(/[^0-9.]/g, '')
+  const parts = v.split('.')
+  if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('')
+  // limit to 2 decimal places
+  const [whole, dec] = v.split('.')
+  if (dec !== undefined) v = whole + '.' + dec.slice(0, 2)
+  return v
 }
 
 export async function uploadFile(file: File, path: string): Promise<string | null> {

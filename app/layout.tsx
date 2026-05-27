@@ -11,6 +11,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -24,8 +26,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-gray-50">
         <div className="md:flex md:min-h-screen">
           <SideNav />
-          <main className="flex-1 min-h-screen">
-            <div className="max-w-lg md:max-w-7xl mx-auto bg-white md:bg-transparent min-h-screen md:min-h-0 md:py-8">
+          <main className="flex-1">
+            <div className="max-w-lg md:max-w-7xl mx-auto bg-white md:bg-transparent min-h-screen md:py-8">
               {children}
             </div>
           </main>

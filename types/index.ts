@@ -1,7 +1,8 @@
 export type PatientType = 'IPD' | 'Resident' | 'Visit' | 'House Visit'
 export type DogStatus = 'Active' | 'Discharged'
 export type TreatmentType = 'General' | 'Vaccination' | 'Deworming'
-export type TimeOfDay = 'Morning' | 'Evening' | 'Ad hoc'
+export type TimeOfDay = 'Morning' | 'Evening'
+export type PrescriptionTimeOfDay = 'Morning' | 'Evening' | 'Both'
 export type FollowUpType = 'Treatment' | 'Vaccination' | 'Deworming' | 'Vet Consult'
 export type FollowUpStatus = 'Pending' | 'Done'
 export type NextAction = 'Treatment Changed' | 'Treatment Ended' | 'Treatment Continued' | 'Diagnostic Action'
@@ -91,7 +92,7 @@ export interface PrescriptionItem {
   id: string
   prescription_id: string
   medicine_id: string
-  time_of_day: 'Morning' | 'Evening' | 'Both' | 'Ad hoc'
+  time_of_day: PrescriptionTimeOfDay
   dose: string | null
   quantity: number | null
   start_date: string | null

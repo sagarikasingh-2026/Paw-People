@@ -1,13 +1,35 @@
 'use client'
 import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Dog, Medicine, TreatmentType, TimeOfDay } from '@/types'
+import { Dog, Medicine, TreatmentType, TimeOfDay, Prescription, PrescriptionItem } from '@/types'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Sun, Moon, Zap } from 'lucide-react'
+import { ArrowLeft, Sun, Moon, Zap, Trash2, Plus, AlertTriangle, Pill } from 'lucide-react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import MedicineSearch from '@/components/MedicineSearch'
-import { timeOfDayColor, cn } from '@/lib/utils'
+import { cn, sanitizeQuantity, timeOfDayColor } from '@/lib/utils'
+
+interface DraftRow {
+  medicine_id: string
+  medicine: Medicine | null
+  treatment_type: TreatmentType
+  mg: string
+  quantity_used: string
+  cost: string
+  notes: string
+}
+
+function newRow(med?: Medicine, dose?: string, tx: TreatmentType = 'General'): DraftRow {
+  return {
+    medicine_id: med?.id ?? '',
+    medicine: med ?? null,
+    treatment_type: tx,
+    mg: med?.power_mg ?? '',
+    quantity_used: dose ? '1' : '',
+    cost: '',
+    notes: '',
+  }
+}
 
 function NewTreatmentInner() {
   const router = useRouter()
@@ -16,25 +38,19 @@ function NewTreatmentInner() {
 
   const [dogs, setDogs] = useState<Dog[]>([])
   const [medicines, setMedicines] = useState<Medicine[]>([])
+  const [activeRx, setActiveRx] = useState<Prescription | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectedDog, setSelectedDog] = useState<Dog | null>(null)
-  const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null)
 
-  const [form, setForm] = useState({
-    dog_id: prefillDogId,
-    medicine_id: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
-    time_of_day: 'Morning' as TimeOfDay,
-    treatment_type: 'General' as TreatmentType,
-    mg: '',
-    quantity_used: '',
-    cost: '',
-    notes: '',
-    logged_by: '',
-    follow_up_date: '',
-    follow_up_type: 'Treatment',
-    follow_up_notes: '',
-  })
+  const [dogId, setDogId] = useState(prefillDogId)
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('Morning')
+  const [loggedBy, setLoggedBy] = useState('')
+  const [rows, setRows] = useState<DraftRow[]>([newRow()])
+
+  const [followUpDate, setFollowUpDate] = useState('')
+  const [followUpType, setFollowUpType] = useState('Treatment')
+  const [followUpNotes, setFollowUpNotes] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -44,161 +60,280 @@ function NewTreatmentInner() {
       ])
       setDogs(dogsRes.data || [])
       setMedicines(medsRes.data || [])
-      if (prefillDogId) setSelectedDog(dogsRes.data?.find((d: Dog) => d.id === prefillDogId) ?? null)
+      if (prefillDogId) {
+        const d = dogsRes.data?.find((x: Dog) => x.id === prefillDogId) ?? null
+        setSelectedDog(d)
+      }
     }
     load()
   }, [prefillDogId])
 
-  function handleDogChange(dogId: string) {
-    setForm(f => ({ ...f, dog_id: dogId }))
-    setSelectedDog(dogs.find(d => d.id === dogId) ?? null)
+  // When dog or time of day changes, load active prescription and auto-populate rows
+  useEffect(() => {
+    if (!dogId) { setActiveRx(null); return }
+
+    async function loadRx() {
+      const { data } = await supabase.from('prescriptions')
+        .select('*, items:prescription_items(*, medicine:medicines(*))')
+        .eq('dog_id', dogId).eq('is_active', true).maybeSingle()
+      setActiveRx(data)
+    }
+    loadRx()
+  }, [dogId])
+
+  // Auto-populate rows from active prescription items matching current time of day
+  useEffect(() => {
+    if (!activeRx?.items) return
+    const items = (activeRx.items as PrescriptionItem[]).filter(i =>
+      i.time_of_day === timeOfDay || i.time_of_day === 'Both'
+    )
+    // Only auto-populate if rows are empty or single empty row
+    const hasContent = rows.some(r => r.medicine_id)
+    if (!hasContent && items.length > 0) {
+      const newRows = items.map(item => {
+        const med = item.medicine ?? medicines.find(m => m.id === item.medicine_id) ?? null
+        const qty = item.quantity?.toString() ?? '1'
+        const cost = med?.cost_per_unit && item.quantity ? (med.cost_per_unit * item.quantity).toFixed(2) : ''
+        return {
+          medicine_id: item.medicine_id,
+          medicine: med,
+          treatment_type: 'General' as TreatmentType,
+          mg: item.dose ?? med?.power_mg ?? '',
+          quantity_used: qty,
+          cost,
+          notes: '',
+        }
+      })
+      setRows(newRows)
+    }
+  }, [activeRx, timeOfDay])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleDogChange(newId: string) {
+    setDogId(newId)
+    setSelectedDog(dogs.find(d => d.id === newId) ?? null)
+    // Reset rows to one empty row so auto-populate can re-run
+    setRows([newRow()])
   }
 
-  function handleMedicineChange(medId: string, med: Medicine | null) {
-    setSelectedMedicine(med)
-    const qty = form.quantity_used ? parseFloat(form.quantity_used) : null
-    setForm(f => ({
-      ...f,
-      medicine_id: medId,
-      mg: med?.power_mg ?? f.mg,
-      cost: med && qty ? (med.cost_per_unit ? (med.cost_per_unit * qty).toFixed(2) : '') : med?.cost_per_unit?.toString() ?? f.cost,
-    }))
+  function updateRow(i: number, patch: Partial<DraftRow>) {
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r))
   }
 
-  function handleQuantityChange(qty: string) {
-    const q = parseFloat(qty)
-    const cost = selectedMedicine?.cost_per_unit && !isNaN(q) ? (selectedMedicine.cost_per_unit * q).toFixed(2) : form.cost
-    setForm(f => ({ ...f, quantity_used: qty, cost }))
+  function setRowMedicine(i: number, medId: string, med: Medicine | null) {
+    const qty = parseFloat(rows[i].quantity_used)
+    const cost = med?.cost_per_unit && !isNaN(qty) && qty > 0
+      ? (med.cost_per_unit * qty).toFixed(2)
+      : ''
+    updateRow(i, {
+      medicine_id: medId, medicine: med,
+      mg: med?.power_mg ?? rows[i].mg,
+      cost,
+    })
   }
+
+  function setRowQuantity(i: number, raw: string) {
+    const sanitized = sanitizeQuantity(raw)
+    const qty = parseFloat(sanitized)
+    const med = rows[i].medicine
+    const cost = med?.cost_per_unit && !isNaN(qty) && qty > 0
+      ? (med.cost_per_unit * qty).toFixed(2)
+      : ''
+    updateRow(i, { quantity_used: sanitized, cost })
+  }
+
+  function addRow() { setRows(prev => [...prev, newRow()]) }
+  function removeRow(i: number) { setRows(prev => prev.filter((_, idx) => idx !== i)) }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.dog_id) return alert('Please select a patient')
+    if (!dogId) return alert('Please select a patient')
+    const validRows = rows.filter(r => r.medicine_id || r.notes)
+    if (validRows.length === 0) return alert('Add at least one medicine or note')
+
+    // Validate quantities
+    for (const r of validRows) {
+      if (r.quantity_used && parseFloat(r.quantity_used) < 0) return alert('Quantity must be positive')
+    }
+
     setLoading(true)
 
-    const { error } = await supabase.from('treatment_logs').insert([{
-      dog_id: form.dog_id,
-      medicine_id: form.medicine_id || null,
-      date: form.date,
-      time_of_day: form.time_of_day,
-      treatment_type: form.treatment_type,
-      mg: form.mg || null,
-      quantity_used: form.quantity_used ? parseFloat(form.quantity_used) : null,
-      cost: form.cost ? parseFloat(form.cost) : null,
-      notes: form.notes || null,
-      logged_by: form.logged_by || null,
-    }])
+    const payloads = validRows.map(r => ({
+      dog_id: dogId,
+      medicine_id: r.medicine_id || null,
+      date,
+      time_of_day: timeOfDay,
+      treatment_type: r.treatment_type,
+      mg: r.mg || null,
+      quantity_used: r.quantity_used ? parseFloat(r.quantity_used) : null,
+      cost: r.cost ? parseFloat(r.cost) : null,
+      notes: r.notes || null,
+      logged_by: loggedBy || null,
+    }))
 
+    const { error } = await supabase.from('treatment_logs').insert(payloads)
     if (error) { setLoading(false); alert('Error: ' + error.message); return }
 
-    if (form.follow_up_date) {
+    if (followUpDate) {
       await supabase.from('follow_ups').insert([{
-        dog_id: form.dog_id, follow_up_type: form.follow_up_type,
-        due_date: form.follow_up_date, status: 'Pending',
-        notes: form.follow_up_notes || null,
+        dog_id: dogId, follow_up_type: followUpType,
+        due_date: followUpDate, status: 'Pending',
+        notes: followUpNotes || null,
       }])
     }
 
     setLoading(false)
-    router.push(`/dogs/${form.dog_id}`)
+    router.push(`/dogs/${dogId}`)
   }
 
+  const totalCost = rows.reduce((sum, r) => sum + (parseFloat(r.cost) || 0), 0)
+
   return (
-    <div className="pb-24 md:pb-8">
+    <div className="pb-40 md:pb-8">  {/* extra bottom space for sticky button + bottom nav */}
       <div className="px-4 md:px-0 pt-6 pb-4 flex items-center gap-3">
         <Link href="/dashboard" className="p-2 rounded-xl bg-gray-100"><ArrowLeft size={18} /></Link>
         <h1 className="text-xl font-bold text-gray-900">Log Treatment</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="px-4 md:px-0 space-y-4">
-
         <Field label="Patient *">
-          <select required value={form.dog_id} onChange={e => handleDogChange(e.target.value)} className={inputCls}>
+          <select required value={dogId} onChange={e => handleDogChange(e.target.value)} className={inputCls}>
             <option value="">Select patient</option>
             {dogs.map(d => <option key={d.id} value={d.id}>{d.name} (#{d.patient_id})</option>)}
           </select>
         </Field>
 
-        <Field label="Date *">
-          <input required type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={inputCls} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Date *">
+            <input required type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label="Logged by">
+            <input type="text" value={loggedBy} onChange={e => setLoggedBy(e.target.value)} placeholder="Your name" className={inputCls} />
+          </Field>
+        </div>
 
-        {/* Time of day — prominent */}
         <Field label="Time of Day *">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {([
               { val: 'Morning', icon: <Sun size={15} />, label: 'Morning' },
               { val: 'Evening', icon: <Moon size={15} />, label: 'Evening' },
-              { val: 'Ad hoc', icon: <Zap size={15} />, label: 'Ad hoc' },
             ] as { val: TimeOfDay; icon: React.ReactNode; label: string }[]).map(t => (
-              <button key={t.val} type="button" onClick={() => setForm(f => ({ ...f, time_of_day: t.val }))}
-                className={cn('flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium border transition-all',
-                  form.time_of_day === t.val ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200')}>
+              <button key={t.val} type="button" onClick={() => setTimeOfDay(t.val)}
+                className={cn('flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-medium border transition-all',
+                  timeOfDay === t.val ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200')}>
                 {t.icon} {t.label}
               </button>
             ))}
           </div>
         </Field>
 
-        <Field label="Treatment Type *">
-          <div className="flex gap-2">
-            {(['General', 'Vaccination', 'Deworming'] as TreatmentType[]).map(t => (
-              <button key={t} type="button" onClick={() => setForm(f => ({ ...f, treatment_type: t }))}
-                className={cn('flex-1 py-2.5 rounded-xl text-sm font-medium border transition-all',
-                  form.treatment_type === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200')}>
-                {t}
-              </button>
-            ))}
+        {/* Auto-populate indicator */}
+        {activeRx && activeRx.items && activeRx.items.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+            <Pill size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-amber-800">
+              <span className="font-semibold">Active prescription loaded</span> — medicines for {timeOfDay.toLowerCase()} have been auto-filled below. Adjust as needed.
+            </div>
           </div>
-        </Field>
+        )}
 
-        <Field label="Medicine">
-          <MedicineSearch medicines={medicines} value={form.medicine_id} onChange={handleMedicineChange} />
-        </Field>
+        {/* Medicine rows */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Medicines</label>
+            <span className="text-xs text-gray-400">{rows.filter(r => r.medicine_id).length} added</span>
+          </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Mg / Dose">
-            <input type="text" value={form.mg} onChange={e => setForm(f => ({ ...f, mg: e.target.value }))} placeholder="150mg" className={inputCls} />
-          </Field>
-          <Field label="Quantity">
-            <input type="number" step="0.5" value={form.quantity_used} onChange={e => handleQuantityChange(e.target.value)} placeholder="1" className={inputCls} />
-          </Field>
-          <Field label="Cost (₹)">
-            <input type="number" step="0.01" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: e.target.value }))} placeholder="auto" className={inputCls} />
-          </Field>
+          {rows.map((row, i) => (
+            <div key={i} className="bg-gray-50 border border-gray-200 rounded-2xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500">#{i + 1}</span>
+                {rows.length > 1 && (
+                  <button type="button" onClick={() => removeRow(i)} className="text-gray-400 hover:text-red-500">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+
+              <MedicineSearch medicines={medicines} value={row.medicine_id}
+                onChange={(id, med) => setRowMedicine(i, id, med)} />
+
+              {/* Treatment type */}
+              <div className="flex gap-1.5">
+                {(['General', 'Vaccination', 'Deworming'] as TreatmentType[]).map(t => (
+                  <button key={t} type="button" onClick={() => updateRow(i, { treatment_type: t })}
+                    className={cn('flex-1 py-1.5 rounded-lg text-[11px] font-medium border',
+                      row.treatment_type === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200')}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">Dose / Mg</label>
+                  <input type="text" value={row.mg} onChange={e => updateRow(i, { mg: e.target.value })} placeholder="150mg" className={inputClsSm} />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">Qty *</label>
+                  <input type="text" inputMode="decimal" value={row.quantity_used}
+                    onChange={e => setRowQuantity(i, e.target.value)} placeholder="1" className={inputClsSm} />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">Cost (₹)</label>
+                  <input type="text" inputMode="decimal" value={row.cost}
+                    onChange={e => updateRow(i, { cost: sanitizeQuantity(e.target.value) })}
+                    placeholder={row.medicine?.cost_per_unit ? 'auto' : 'manual'}
+                    className={inputClsSm} />
+                </div>
+              </div>
+
+              {row.medicine && !row.medicine.cost_per_unit && (
+                <div className="flex items-start gap-1.5 text-[11px] text-amber-600">
+                  <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
+                  <span>No cost set for this medicine in inventory — enter manually</span>
+                </div>
+              )}
+
+              <input type="text" value={row.notes} onChange={e => updateRow(i, { notes: e.target.value })}
+                placeholder="Notes (optional)" className={inputClsSm} />
+            </div>
+          ))}
+
+          <button type="button" onClick={addRow}
+            className="w-full py-2.5 border border-dashed border-blue-300 text-blue-600 rounded-xl text-sm font-medium hover:bg-blue-50 flex items-center justify-center gap-1.5">
+            <Plus size={14} /> Add another medicine
+          </button>
         </div>
 
-        <Field label="Notes">
-          <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any additional notes..." rows={2} className={inputCls} />
-        </Field>
+        {totalCost > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">
+            <span className="text-sm text-blue-700 font-medium">Total cost</span>
+            <span className="text-lg font-bold text-blue-900">₹{totalCost.toFixed(2)}</span>
+          </div>
+        )}
 
-        <Field label="Logged by">
-          <input type="text" value={form.logged_by} onChange={e => setForm(f => ({ ...f, logged_by: e.target.value }))} placeholder="Your name" className={inputCls} />
-        </Field>
-
-        <div className="border-t border-gray-100 pt-4">
-          <p className="text-sm font-semibold text-gray-700 mb-3">Schedule follow-up (optional)</p>
+        <div className="border-t border-gray-100 pt-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Schedule follow-up (optional)</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Follow-up date">
-              <input type="date" value={form.follow_up_date} onChange={e => setForm(f => ({ ...f, follow_up_date: e.target.value }))} className={inputCls} />
+              <input type="date" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} className={inputCls} />
             </Field>
             <Field label="Type">
-              <select value={form.follow_up_type} onChange={e => setForm(f => ({ ...f, follow_up_type: e.target.value }))} className={inputCls}>
+              <select value={followUpType} onChange={e => setFollowUpType(e.target.value)} className={inputCls}>
                 <option>Treatment</option><option>Vaccination</option><option>Deworming</option><option>Vet Consult</option>
               </select>
             </Field>
           </div>
-          {form.follow_up_date && (
-            <input type="text" placeholder="Follow-up notes..." value={form.follow_up_notes} onChange={e => setForm(f => ({ ...f, follow_up_notes: e.target.value }))} className={`${inputCls} mt-3`} />
+          {followUpDate && (
+            <input type="text" placeholder="Follow-up notes..." value={followUpNotes} onChange={e => setFollowUpNotes(e.target.value)} className={inputCls} />
           )}
         </div>
 
-        {/* Sticky submit on mobile */}
-        <div className="fixed bottom-0 left-0 right-0 md:relative md:bottom-auto bg-white border-t border-gray-100 md:border-0 p-4 md:p-0">
-          <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">
-            {loading ? 'Saving...' : 'Log Treatment'}
-          </button>
-        </div>
+        {/* Inline submit for desktop AND a copy that's always visible at end of form (mobile-safe) */}
+        <button type="submit" disabled={loading}
+          className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-semibold text-sm disabled:opacity-60 shadow-lg shadow-blue-200">
+          {loading ? 'Saving...' : `Log ${rows.filter(r => r.medicine_id).length || ''} Treatment${rows.filter(r => r.medicine_id).length === 1 ? '' : 's'}`.trim()}
+        </button>
       </form>
     </div>
   )
@@ -209,6 +344,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls = 'w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400 focus:bg-white'
+const inputClsSm = 'w-full px-2.5 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400'
 
 export default function Page() {
   return <Suspense fallback={<div className="p-8 text-gray-400">Loading...</div>}><NewTreatmentInner /></Suspense>

@@ -18,17 +18,16 @@ export default function NewDogPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.from('dogs').insert([{
-      ...form, status: 'Active',
-      photo_url: form.photo_url || null,
-    }])
+    const { data, error } = await supabase.from('dogs').insert([{ ...form, status: 'Active', photo_url: form.photo_url || null }]).select().single()
     setLoading(false)
-    if (!error) router.push('/dogs')
-    else alert('Error: ' + error.message)
+    if (error) return alert('Error: ' + error.message)
+    // Redirect straight to the new dog's profile so user can add prescription
+    if (data) router.push(`/dogs/${data.id}`)
+    else router.push('/dogs')
   }
 
   return (
-    <div className="pb-24 md:pb-8">
+    <div className="pb-40 md:pb-8">
       <div className="px-4 md:px-0 pt-6 pb-4 flex items-center gap-3">
         <Link href="/dogs" className="p-2 rounded-xl bg-gray-100"><ArrowLeft size={18} /></Link>
         <h1 className="text-xl font-bold text-gray-900">New Patient</h1>
@@ -55,13 +54,11 @@ export default function NewDogPage() {
           <input value={form.guardian_contact} onChange={e => setForm(f => ({ ...f, guardian_contact: e.target.value }))} placeholder="Phone number" type="tel" className={inputCls} />
         </Field>
 
-        <p className="text-xs text-gray-400">Prescription / ongoing treatment can be added from the patient profile after creating.</p>
+        <p className="text-xs text-gray-400">After creating the patient, you can add their prescription, treatments, and follow-ups from the profile page.</p>
 
-        <div className="fixed bottom-0 left-0 right-0 md:relative md:bottom-auto bg-white border-t border-gray-100 md:border-0 p-4 md:p-0">
-          <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">
-            {loading ? 'Adding...' : 'Add Patient'}
-          </button>
-        </div>
+        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-semibold text-sm disabled:opacity-60 shadow-lg shadow-blue-200">
+          {loading ? 'Adding...' : 'Add Patient'}
+        </button>
       </form>
     </div>
   )
