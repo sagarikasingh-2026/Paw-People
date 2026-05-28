@@ -3,9 +3,9 @@ export type DogStatus = 'Active' | 'Discharged'
 export type TreatmentType = 'General' | 'Vaccination' | 'Deworming'
 export type TimeOfDay = 'Morning' | 'Evening'
 export type PrescriptionTimeOfDay = 'Morning' | 'Evening' | 'Both'
-export type FollowUpType = 'Treatment' | 'Vaccination' | 'Deworming' | 'Vet Consult'
+export type FollowUpType = 'Treatment' | 'Vaccination' | 'Deworming' | 'Vet Consult' | 'Diagnostic'
 export type FollowUpStatus = 'Pending' | 'Done'
-export type NextAction = 'Treatment Changed' | 'Treatment Ended' | 'Treatment Continued' | 'Diagnostic Action'
+export type NextAction = 'Treatment Changed' | 'Treatment Ended' | 'Treatment Continued' | 'Diagnostic Action' | 'Blood Work' | 'X-Ray' | 'CBC' | 'Other'
 
 export interface Dog {
   id: string
@@ -60,8 +60,9 @@ export interface FollowUp {
   notes: string | null
   completion_notes: string | null
   completed_at: string | null
-  next_action: NextAction | null
+  next_actions: string[] | null
   next_action_notes: string | null
+  completion_photo_url: string | null
   created_at: string
   updated_at: string
   dog?: Dog
@@ -74,6 +75,7 @@ export interface Diagnostic {
   date: string
   notes: string | null
   photo_url: string | null
+  follow_up_date: string | null
   created_at: string
 }
 

@@ -120,6 +120,7 @@ export default function InventoryPage() {
                     <span className="font-semibold text-sm text-gray-900 truncate">{med.name}</span>
                     {isOut ? <span className="text-[10px] bg-red-200 text-red-800 px-1.5 py-0.5 rounded font-bold">OUT</span> : isLow && <AlertTriangle size={13} className="text-red-500 flex-shrink-0" />}
                   </div>
+                  {med.composition && <p className="text-[11px] text-gray-400 mt-0.5">{med.composition}</p>}
                   <div className="flex items-center gap-3 mt-1">
                     <span className={cn('text-base font-bold', isLow ? 'text-red-700' : 'text-gray-700')}>{med.quantity_in_stock}</span>
                     <span className="text-xs text-gray-400">units in stock</span>

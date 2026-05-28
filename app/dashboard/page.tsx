@@ -30,15 +30,22 @@ export default function Dashboard() {
     const start = usageRange === 'week' ? format(startOfWeek(new Date()), 'yyyy-MM-dd') : format(startOfMonth(new Date()), 'yyyy-MM-dd')
     const end = usageRange === 'week' ? format(endOfWeek(new Date()), 'yyyy-MM-dd') : format(endOfMonth(new Date()), 'yyyy-MM-dd')
 
-    const [fuRes, dogsRes, medsRes, txRes] = await Promise.all([
+    const [fuRes, dogsRes, medsRes, txRes, dxRes] = await Promise.all([
       supabase.from('follow_ups').select('*, dog:dogs(*)').eq('status', 'Pending').lte('due_date', sevenDaysOut).order('due_date'),
       supabase.from('dogs').select('*').eq('status', 'Active').order('name'),
       supabase.from('medicines').select('*'),
       supabase.from('treatment_logs').select('*, medicine:medicines(name)').gte('date', start).lte('date', end),
+      supabase.from('diagnostics').select('*, dog:dogs(name,patient_id)').not('follow_up_date', 'is', null).lte('follow_up_date', sevenDaysOut).order('follow_up_date'),
     ])
-
+    const dxFollowUps = (dxRes.data || []).map((dx) => ({
+      id: 'dx-' + dx.id, dog_id: dx.dog_id, follow_up_type: 'Diagnostic',
+      due_date: dx.follow_up_date, status: 'Pending', notes: dx.diagnostic_type + ' reminder',
+      completion_notes: null, completed_at: null, next_actions: null, next_action_notes: null, completion_photo_url: null,
+      created_at: dx.created_at, updated_at: dx.created_at, dog: dx.dog,
+    }))
     const meds = medsRes.data || []
-    setFollowUps(fuRes.data || [])
+    const allFu = [...(fuRes.data || []), ...dxFollowUps].sort((a, b) => a.due_date.localeCompare(b.due_date))
+    setFollowUps(allFu)
     setActiveDogs(dogsRes.data || [])
     setLowStockMeds(meds.filter((m: Medicine) => m.quantity_in_stock <= m.low_stock_threshold))
 

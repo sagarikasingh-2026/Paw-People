@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Dog, TreatmentLog, FollowUp, Diagnostic, Prescription, PrescriptionItem, Medicine, NextAction, TimeOfDay } from '@/types'
+import { Dog, TreatmentLog, FollowUp, Diagnostic, Prescription, PrescriptionItem, Medicine, TimeOfDay } from '@/types'
 import { formatDate, patientTypeBadgeColor, treatmentTypeBadgeColor, timeOfDayColor, cn, sanitizeQuantity } from '@/lib/utils'
 import { ArrowLeft, Phone, Plus, Share2, CheckCircle, Microscope, Edit2, Trash2, X, Sun, Moon } from 'lucide-react'
 import Link from 'next/link'
@@ -11,6 +11,17 @@ import PhotoUpload from '@/components/PhotoUpload'
 import MedicineSearch from '@/components/MedicineSearch'
 
 type Tab = 'overview' | 'prescription' | 'treatments' | 'followups' | 'diagnostics'
+
+const NEXT_ACTIONS = [
+  'Treatment Continued',
+  'Treatment Changed',
+  'Treatment Ended',
+  'Diagnostic Action',
+  'Blood Work',
+  'X-Ray',
+  'CBC',
+  'Other',
+]
 
 export default function DogProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -27,16 +38,14 @@ export default function DogProfilePage() {
   const [showFollowUpForm, setShowFollowUpForm] = useState(false)
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null)
   const [completingFollowUp, setCompletingFollowUp] = useState<string | null>(null)
-
   const [showDiagnosticForm, setShowDiagnosticForm] = useState(false)
   const [editingDiagnostic, setEditingDiagnostic] = useState<Diagnostic | null>(null)
-
   const [editingTreatment, setEditingTreatment] = useState<TreatmentLog | null>(null)
-
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false)
+  const [editingPrescription, setEditingPrescription] = useState<Prescription | null>(null)
   const [editingDog, setEditingDog] = useState(false)
 
-  useEffect(() => { load() }, [id])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [id]) // eslint-disable-line
 
   async function load() {
     const [dogRes, txRes, fuRes, dxRes, rxRes, medRes] = await Promise.all([
@@ -79,9 +88,7 @@ export default function DogProfilePage() {
     }
     if (treatments.length > 0) {
       text += `\n*Recent Logs:*\n`
-      treatments.slice(0, 5).forEach(t => {
-        text += `• ${formatDate(t.date)} ${t.time_of_day} — ${(t as any).medicine?.name ?? t.treatment_type}\n`
-      })
+      treatments.slice(0, 5).forEach(t => text += `• ${formatDate(t.date)} ${t.time_of_day} — ${(t as any).medicine?.name ?? t.treatment_type}\n`)
     }
     const pending = followUps.filter(f => f.status === 'Pending')
     if (pending.length > 0) {
@@ -116,11 +123,10 @@ export default function DogProfilePage() {
 
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl p-4">
           <div className="flex items-start gap-3">
-            {dog.photo_url ? (
-              <img src={dog.photo_url} alt={dog.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-sm flex-shrink-0" />
-            ) : (
-              <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center text-3xl flex-shrink-0">🐕</div>
-            )}
+            {dog.photo_url
+              ? <img src={dog.photo_url} alt={dog.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-sm flex-shrink-0" />
+              : <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center text-3xl flex-shrink-0">🐕</div>
+            }
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-bold text-gray-900">{dog.name}</h1>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -141,7 +147,7 @@ export default function DogProfilePage() {
       </div>
 
       {/* Active prescription summary */}
-      {activePrescription && activePrescription.items && activePrescription.items.length > 0 && (
+      {activePrescription?.items && activePrescription.items.length > 0 && (
         <div className="mx-4 md:mx-0 mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Active Prescription</p>
@@ -149,13 +155,11 @@ export default function DogProfilePage() {
           </div>
           {(['Morning', 'Evening', 'Both'] as const).map(tod => {
             const items = activePrescription.items!.filter((i: any) => i.time_of_day === tod)
-            if (items.length === 0) return null
+            if (!items.length) return null
             return (
               <div key={tod} className="mb-1.5 flex items-start gap-2">
-                <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded uppercase mt-0.5', timeOfDayColor(tod))}>{tod}</span>
-                <span className="text-xs text-amber-900 flex-1">
-                  {items.map((i: any) => `${i.medicine?.name}${i.dose ? ` ${i.dose}` : ''}`).join(' · ')}
-                </span>
+                <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded uppercase mt-0.5 flex-shrink-0', timeOfDayColor(tod))}>{tod}</span>
+                <span className="text-xs text-amber-900">{items.map((i: any) => `${i.medicine?.name}${i.dose ? ` ${i.dose}` : ''}`).join(' · ')}</span>
               </div>
             )
           })}
@@ -182,6 +186,7 @@ export default function DogProfilePage() {
       </div>
 
       <div className="px-4 md:px-0">
+
         {/* OVERVIEW */}
         {tab === 'overview' && (
           <div className="space-y-4">
@@ -190,7 +195,6 @@ export default function DogProfilePage() {
               <Stat label="Follow-ups" value={pendingFollowUps.length} sub="pending" />
               <Stat label="Total cost" value={`₹${totalCost.toFixed(0)}`} />
             </div>
-
             {completedFollowUps.length > 0 && (
               <div>
                 <p className="text-sm font-semibold text-gray-700 mb-2">Care timeline</p>
@@ -203,17 +207,24 @@ export default function DogProfilePage() {
                         <span className="text-xs text-gray-400">{formatDate(f.due_date)}</span>
                       </div>
                       {f.completion_notes && <p className="text-xs text-gray-600 ml-5">{f.completion_notes}</p>}
-                      {f.next_action && (
-                        <p className="text-xs text-blue-600 ml-5 mt-0.5">
-                          → {f.next_action}{f.next_action_notes ? `: ${f.next_action_notes}` : ''}
-                        </p>
+                      {f.next_actions && f.next_actions.length > 0 && (
+                        <div className="ml-5 mt-1 flex flex-wrap gap-1">
+                          {f.next_actions.map(a => (
+                            <span key={a} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">→ {a}</span>
+                          ))}
+                        </div>
+                      )}
+                      {f.next_action_notes && <p className="text-xs text-gray-500 ml-5 mt-0.5">{f.next_action_notes}</p>}
+                      {f.completion_photo_url && (
+                        <a href={f.completion_photo_url} target="_blank" rel="noopener noreferrer">
+                          <img src={f.completion_photo_url} alt="" className="mt-2 ml-5 w-20 h-20 object-cover rounded-xl border" />
+                        </a>
                       )}
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
             {dog.status === 'Active' && (
               <button onClick={handleDischarge} className="w-full border border-red-200 text-red-600 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50">
                 Mark as Discharged
@@ -225,39 +236,38 @@ export default function DogProfilePage() {
         {/* PRESCRIPTION */}
         {tab === 'prescription' && (
           <div className="space-y-3">
-            <button onClick={() => setShowPrescriptionForm(!showPrescriptionForm)}
+            <button onClick={() => { setShowPrescriptionForm(!showPrescriptionForm); setEditingPrescription(null) }}
               className="w-full flex items-center justify-center gap-2 border border-dashed border-blue-300 text-blue-600 py-2.5 rounded-xl text-sm font-medium">
-              <Plus size={16} /> {showPrescriptionForm ? 'Cancel' : 'New Prescription'}
+              <Plus size={16} /> {showPrescriptionForm && !editingPrescription ? 'Cancel' : 'New Prescription'}
             </button>
-            {showPrescriptionForm && (
+            {showPrescriptionForm && !editingPrescription && (
               <PrescriptionForm dogId={id} medicines={medicines} onSaved={() => { setShowPrescriptionForm(false); load() }} />
             )}
             {prescriptions.length === 0 ? <EmptyState icon="💊" text="No prescriptions yet" /> :
               prescriptions.map(rx => (
-                <div key={rx.id} className={cn('rounded-2xl border p-4',
-                  rx.is_active ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50')}>
+                <div key={rx.id} className={cn('rounded-2xl border p-4', rx.is_active ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50')}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-gray-700">{formatDate(rx.created_at)}</span>
                       {rx.is_active && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Active</span>}
                     </div>
-                    <div className="flex gap-1.5">
-                      {rx.photo_url && <a href={rx.photo_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 font-medium">📷 Photo</a>}
-                      <button onClick={() => handleDelete('prescriptions', rx.id, 'Delete this prescription?')} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
+                    <div className="flex items-center gap-2">
+                      {rx.photo_url && <a href={rx.photo_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600">📷</a>}
+                      <button onClick={() => { setEditingPrescription(rx); setShowPrescriptionForm(false) }} className="p-1 text-gray-400 hover:text-blue-500"><Edit2 size={13} /></button>
+                      <button onClick={() => handleDelete('prescriptions', rx.id, 'Delete this prescription?')} className="p-1 text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
                     </div>
                   </div>
                   {rx.items && rx.items.length > 0 && (
                     <div className="space-y-1.5">
                       {(rx.items as any[]).map((item: any) => (
                         <div key={item.id} className="flex items-center gap-2 text-xs text-gray-700 flex-wrap">
-                          <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium', timeOfDayColor(item.time_of_day))}>{item.time_of_day}</span>
+                          <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0', timeOfDayColor(item.time_of_day))}>{item.time_of_day}</span>
                           <span className="font-medium">{item.medicine?.name}</span>
+                          {item.medicine?.composition && <span className="text-gray-400 text-[10px]">({item.medicine.composition})</span>}
                           {item.dose && <span className="text-gray-500">{item.dose}</span>}
-                          {item.quantity && <span className="text-gray-400">× {item.quantity}</span>}
                           {(item.start_date || item.end_date) && (
                             <span className="text-gray-400 text-[10px]">
-                              {item.start_date ? formatDate(item.start_date) : ''}
-                              {item.end_date ? ` → ${formatDate(item.end_date)}` : ''}
+                              {item.start_date ? formatDate(item.start_date) : ''}{item.end_date ? ` → ${formatDate(item.end_date)}` : ''}
                             </span>
                           )}
                         </div>
@@ -267,6 +277,14 @@ export default function DogProfilePage() {
                   {rx.notes && <p className="text-xs text-gray-500 mt-2 italic">{rx.notes}</p>}
                 </div>
               ))}
+            {editingPrescription && (
+              <EditPrescriptionModal
+                prescription={editingPrescription}
+                medicines={medicines}
+                onSaved={() => { setEditingPrescription(null); load() }}
+                onClose={() => setEditingPrescription(null)}
+              />
+            )}
           </div>
         )}
 
@@ -283,7 +301,7 @@ export default function DogProfilePage() {
                         <span className={cn('text-[10px] font-medium px-2 py-0.5 rounded-full', treatmentTypeBadgeColor(t.treatment_type))}>{t.treatment_type}</span>
                         <span className={cn('text-[10px] font-medium px-2 py-0.5 rounded-full', timeOfDayColor(t.time_of_day))}>{t.time_of_day}</span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-3 text-xs text-gray-500">
+                      <div className="flex flex-wrap gap-x-3 text-xs text-gray-500">
                         <span>{formatDate(t.date)}</span>
                         {t.quantity_used != null && <span>{t.quantity_used} units</span>}
                         {t.mg && <span>{t.mg}</span>}
@@ -354,7 +372,19 @@ export default function DogProfilePage() {
                           <span className="text-xs text-gray-400">{formatDate(f.due_date)}</span>
                         </div>
                         {f.completion_notes && <p className="text-xs text-gray-600 mt-1">{f.completion_notes}</p>}
-                        {f.next_action && <p className="text-xs text-blue-600 mt-0.5">→ {f.next_action}{f.next_action_notes ? `: ${f.next_action_notes}` : ''}</p>}
+                        {f.next_actions && f.next_actions.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {f.next_actions.map(a => (
+                              <span key={a} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">→ {a}</span>
+                            ))}
+                          </div>
+                        )}
+                        {f.next_action_notes && <p className="text-xs text-gray-500 mt-0.5">{f.next_action_notes}</p>}
+                        {f.completion_photo_url && (
+                          <a href={f.completion_photo_url} target="_blank" rel="noopener noreferrer">
+                            <img src={f.completion_photo_url} alt="" className="mt-2 w-20 h-20 object-cover rounded-xl border" />
+                          </a>
+                        )}
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
                         <button onClick={() => setEditingFollowUp(f)} className="p-1.5 text-gray-300 hover:text-blue-500"><Edit2 size={13} /></button>
@@ -385,6 +415,9 @@ export default function DogProfilePage() {
                         <Microscope size={14} className="text-gray-500" />
                         <span className="text-sm font-semibold text-gray-900">{d.diagnostic_type}</span>
                         <span className="text-xs text-gray-400">{formatDate(d.date)}</span>
+                        {d.follow_up_date && (
+                          <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Follow-up: {formatDate(d.follow_up_date)}</span>
+                        )}
                       </div>
                       {d.notes && <p className="text-xs text-gray-500">{d.notes}</p>}
                       {d.photo_url && (
@@ -413,11 +446,11 @@ export default function DogProfilePage() {
   )
 }
 
-// ---------- helpers ----------
+// ─── Helpers ────────────────────────────────────────────────
 function Stat({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
   return (
     <div className="bg-gray-50 rounded-2xl p-3 text-center">
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <p className="text-xl font-bold text-gray-900">{value}</p>
       <p className="text-xs text-gray-500">{label}</p>
       {sub && <p className="text-[10px] text-gray-400">{sub}</p>}
     </div>
@@ -426,327 +459,6 @@ function Stat({ label, value, sub }: { label: string; value: number | string; su
 
 function EmptyState({ icon, text }: { icon: string; text: string }) {
   return <div className="text-center py-10 text-gray-400"><p className="text-3xl mb-2">{icon}</p><p className="text-sm">{text}</p></div>
-}
-
-// ---------- Add forms ----------
-function FollowUpForm({ dogId, onSaved }: { dogId: string; onSaved: () => void }) {
-  const [form, setForm] = useState({ follow_up_type: 'Treatment', due_date: '', notes: '' })
-  const [loading, setLoading] = useState(false)
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true)
-    const { error } = await supabase.from('follow_ups').insert([{ ...form, dog_id: dogId, status: 'Pending' }])
-    setLoading(false)
-    if (!error) onSaved()
-  }
-  return (
-    <form onSubmit={submit} className="bg-blue-50 rounded-2xl p-4 space-y-3">
-      <select value={form.follow_up_type} onChange={e => setForm(f => ({ ...f, follow_up_type: e.target.value }))} className={inputCls}>
-        <option>Treatment</option><option>Vaccination</option><option>Deworming</option><option>Vet Consult</option>
-      </select>
-      <input required type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className={inputCls} />
-      <input type="text" placeholder="Notes (optional)" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className={inputCls} />
-      <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60">{loading ? 'Saving...' : 'Add Follow-up'}</button>
-    </form>
-  )
-}
-
-function CompleteFollowUpForm({ followUp, onCompleted, onCancel }: { followUp: FollowUp; onCompleted: () => void; onCancel: () => void }) {
-  const [form, setForm] = useState({ completion_notes: '', next_action: '' as NextAction | '', next_action_notes: '' })
-  const [loading, setLoading] = useState(false)
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true)
-    const { error } = await supabase.from('follow_ups').update({
-      status: 'Done',
-      completion_notes: form.completion_notes || null,
-      next_action: form.next_action || null,
-      next_action_notes: form.next_action_notes || null,
-      completed_at: new Date().toISOString(),
-    }).eq('id', followUp.id)
-    setLoading(false)
-    if (!error) onCompleted()
-  }
-  return (
-    <form onSubmit={submit} className="mt-3 bg-white border border-green-200 rounded-xl p-3 space-y-2.5">
-      <p className="text-xs font-semibold text-gray-700">Complete follow-up</p>
-      <textarea placeholder="What happened in this follow-up?" value={form.completion_notes} onChange={e => setForm(f => ({ ...f, completion_notes: e.target.value }))} rows={2} className={inputCls} />
-      <select value={form.next_action} onChange={e => setForm(f => ({ ...f, next_action: e.target.value as NextAction | '' }))} className={inputCls}>
-        <option value="">Next action (optional)</option>
-        <option>Treatment Continued</option>
-        <option>Treatment Changed</option>
-        <option>Treatment Ended</option>
-        <option>Diagnostic Action</option>
-      </select>
-      {form.next_action && <input type="text" placeholder={form.next_action === 'Diagnostic Action' ? 'Which diagnostic?' : 'Details about the change'} value={form.next_action_notes} onChange={e => setForm(f => ({ ...f, next_action_notes: e.target.value }))} className={inputCls} />}
-      <div className="flex gap-2">
-        <button type="submit" disabled={loading} className="flex-1 bg-green-600 text-white py-2 rounded-xl text-sm font-semibold disabled:opacity-60">{loading ? 'Saving...' : 'Mark Done'}</button>
-        <button type="button" onClick={onCancel} className="px-3 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm">Cancel</button>
-      </div>
-    </form>
-  )
-}
-
-function DiagnosticForm({ dogId, onSaved }: { dogId: string; onSaved: () => void }) {
-  const [form, setForm] = useState({ diagnostic_type: 'X-Ray', date: format(new Date(), 'yyyy-MM-dd'), notes: '', photo_url: '' })
-  const [loading, setLoading] = useState(false)
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true)
-    const { error } = await supabase.from('diagnostics').insert([{ ...form, dog_id: dogId, photo_url: form.photo_url || null }])
-    setLoading(false)
-    if (!error) onSaved()
-  }
-  return (
-    <form onSubmit={submit} className="bg-gray-50 rounded-2xl p-4 space-y-3">
-      <select value={form.diagnostic_type} onChange={e => setForm(f => ({ ...f, diagnostic_type: e.target.value }))} className={inputCls}>
-        <option>X-Ray</option><option>CBC</option><option>Blood Test</option><option>LFT</option><option>RFT</option><option>Ultrasound</option><option>Other</option>
-      </select>
-      <input required type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={inputCls} />
-      <textarea placeholder="Notes / findings" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className={inputCls} />
-      <PhotoUpload folder="diagnostics" label="Upload report / image" onUploaded={url => setForm(f => ({ ...f, photo_url: url }))} />
-      <button type="submit" disabled={loading} className="w-full bg-gray-700 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60">{loading ? 'Saving...' : 'Log Diagnostic'}</button>
-    </form>
-  )
-}
-
-function PrescriptionForm({ dogId, medicines, onSaved }: { dogId: string; medicines: Medicine[]; onSaved: () => void }) {
-  const [items, setItems] = useState([{ medicine_id: '', medicine: null as Medicine | null, time_of_day: 'Both', dose: '', quantity: '', start_date: '', end_date: '' }])
-  const [notes, setNotes] = useState('')
-  const [photoUrl, setPhotoUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  function addItem() { setItems(prev => [...prev, { medicine_id: '', medicine: null, time_of_day: 'Both', dose: '', quantity: '', start_date: '', end_date: '' }]) }
-  function removeItem(i: number) { setItems(prev => prev.filter((_, idx) => idx !== i)) }
-  function updateItem(i: number, patch: any) { setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it)) }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    const validItems = items.filter(i => i.medicine_id)
-    if (validItems.length === 0) return alert('Add at least one medicine')
-    setLoading(true)
-    await supabase.from('prescriptions').update({ is_active: false }).eq('dog_id', dogId)
-    const { data: rx, error } = await supabase.from('prescriptions').insert([{ dog_id: dogId, notes: notes || null, photo_url: photoUrl || null, is_active: true }]).select().single()
-    if (error || !rx) { setLoading(false); alert('Error creating prescription'); return }
-    await supabase.from('prescription_items').insert(validItems.map(i => ({
-      prescription_id: rx.id, medicine_id: i.medicine_id, time_of_day: i.time_of_day,
-      dose: i.dose || null, quantity: i.quantity ? parseFloat(i.quantity) : null,
-      start_date: i.start_date || null, end_date: i.end_date || null,
-    })))
-    setLoading(false)
-    onSaved()
-  }
-
-  return (
-    <form onSubmit={submit} className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-4">
-      <p className="text-sm font-semibold text-amber-800">New Prescription</p>
-      {items.map((item, i) => (
-        <div key={i} className="bg-white rounded-xl p-3 space-y-2.5 border border-amber-100">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-600">Medicine {i + 1}</span>
-            {items.length > 1 && <button type="button" onClick={() => removeItem(i)} className="text-gray-400 hover:text-red-500"><X size={14} /></button>}
-          </div>
-          <MedicineSearch medicines={medicines} value={item.medicine_id} onChange={(id, med) => updateItem(i, { medicine_id: id, medicine: med })} />
-          <div className="grid grid-cols-3 gap-2">
-            {(['Morning', 'Evening', 'Both'] as const).map(tod => (
-              <button key={tod} type="button" onClick={() => updateItem(i, { time_of_day: tod })}
-                className={cn('py-1.5 rounded-lg text-[11px] font-medium border',
-                  item.time_of_day === tod ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200')}>
-                {tod}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input type="text" placeholder="Dose (1 tab, 5ml)" value={item.dose} onChange={e => updateItem(i, { dose: e.target.value })} className={inputCls} />
-            <input type="text" inputMode="decimal" placeholder="Qty per dose" value={item.quantity} onChange={e => updateItem(i, { quantity: sanitizeQuantity(e.target.value) })} className={inputCls} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-[10px] text-gray-500 mb-0.5">Start date</label>
-              <input type="date" value={item.start_date} onChange={e => updateItem(i, { start_date: e.target.value })} className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-[10px] text-gray-500 mb-0.5">End date</label>
-              <input type="date" value={item.end_date} onChange={e => updateItem(i, { end_date: e.target.value })} className={inputCls} />
-            </div>
-          </div>
-        </div>
-      ))}
-      <button type="button" onClick={addItem} className="w-full py-2 border border-dashed border-amber-300 text-amber-700 rounded-xl text-sm font-medium">+ Add Medicine</button>
-      <textarea placeholder="Prescription notes..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={inputCls} />
-      <PhotoUpload folder="prescriptions" label="Upload prescription photo" onUploaded={setPhotoUrl} />
-      <button type="submit" disabled={loading} className="w-full bg-amber-600 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60">{loading ? 'Saving...' : 'Save Prescription'}</button>
-    </form>
-  )
-}
-
-// ---------- Edit modals ----------
-function EditDogModal({ dog, onSaved, onClose }: { dog: Dog; onSaved: () => void; onClose: () => void }) {
-  const [form, setForm] = useState({
-    name: dog.name, patient_type: dog.patient_type, guardian_name: dog.guardian_name || '',
-    guardian_contact: dog.guardian_contact || '', status: dog.status, photo_url: dog.photo_url || '',
-  })
-  const [loading, setLoading] = useState(false)
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true)
-    const { error } = await supabase.from('dogs').update({ ...form, photo_url: form.photo_url || null }).eq('id', dog.id)
-    setLoading(false)
-    if (!error) onSaved()
-  }
-  return (
-    <Modal title="Edit Patient" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        <PhotoUpload folder="dogs" label="Dog Photo" currentUrl={form.photo_url} onUploaded={url => setForm(f => ({ ...f, photo_url: url }))} />
-        <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Name" className={inputCls} />
-        <select value={form.patient_type} onChange={e => setForm(f => ({ ...f, patient_type: e.target.value as any }))} className={inputCls}>
-          <option>IPD</option><option>Resident</option><option>Visit</option><option>House Visit</option>
-        </select>
-        <input value={form.guardian_name} onChange={e => setForm(f => ({ ...f, guardian_name: e.target.value }))} placeholder="Guardian name" className={inputCls} />
-        <input value={form.guardian_contact} onChange={e => setForm(f => ({ ...f, guardian_contact: e.target.value }))} placeholder="Guardian contact" className={inputCls} />
-        <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))} className={inputCls}>
-          <option>Active</option><option>Discharged</option>
-        </select>
-        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save'}</button>
-      </form>
-    </Modal>
-  )
-}
-
-function EditTreatmentModal({ tx, medicines, onSaved, onClose }: { tx: TreatmentLog; medicines: Medicine[]; onSaved: () => void; onClose: () => void }) {
-  const [form, setForm] = useState({
-    medicine_id: tx.medicine_id || '',
-    date: tx.date, time_of_day: tx.time_of_day, treatment_type: tx.treatment_type,
-    mg: tx.mg || '', quantity_used: tx.quantity_used?.toString() || '',
-    cost: tx.cost?.toString() || '', notes: tx.notes || '', logged_by: tx.logged_by || '',
-  })
-  const [selectedMed, setSelectedMed] = useState<Medicine | null>(medicines.find(m => m.id === tx.medicine_id) ?? null)
-  const [loading, setLoading] = useState(false)
-
-  function setMedicine(id: string, med: Medicine | null) {
-    setSelectedMed(med)
-    const qty = parseFloat(form.quantity_used)
-    const cost = med?.cost_per_unit && !isNaN(qty) && qty > 0 ? (med.cost_per_unit * qty).toFixed(2) : form.cost
-    setForm(f => ({ ...f, medicine_id: id, mg: med?.power_mg ?? f.mg, cost }))
-  }
-
-  function setQuantity(raw: string) {
-    const sanitized = sanitizeQuantity(raw)
-    const qty = parseFloat(sanitized)
-    const cost = selectedMed?.cost_per_unit && !isNaN(qty) && qty > 0 ? (selectedMed.cost_per_unit * qty).toFixed(2) : form.cost
-    setForm(f => ({ ...f, quantity_used: sanitized, cost }))
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true)
-    const { error } = await supabase.from('treatment_logs').update({
-      medicine_id: form.medicine_id || null,
-      date: form.date, time_of_day: form.time_of_day, treatment_type: form.treatment_type,
-      mg: form.mg || null,
-      quantity_used: form.quantity_used ? parseFloat(form.quantity_used) : null,
-      cost: form.cost ? parseFloat(form.cost) : null,
-      notes: form.notes || null, logged_by: form.logged_by || null,
-    }).eq('id', tx.id)
-    setLoading(false)
-    if (!error) onSaved()
-  }
-
-  return (
-    <Modal title="Edit Treatment Log" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        <MedicineSearch medicines={medicines} value={form.medicine_id} onChange={setMedicine} />
-        <div className="grid grid-cols-2 gap-2">
-          <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={inputCls} />
-          <select value={form.time_of_day} onChange={e => setForm(f => ({ ...f, time_of_day: e.target.value as TimeOfDay }))} className={inputCls}>
-            <option>Morning</option><option>Evening</option>
-          </select>
-        </div>
-        <select value={form.treatment_type} onChange={e => setForm(f => ({ ...f, treatment_type: e.target.value as any }))} className={inputCls}>
-          <option>General</option><option>Vaccination</option><option>Deworming</option>
-        </select>
-        <div className="grid grid-cols-3 gap-2">
-          <input placeholder="Dose" value={form.mg} onChange={e => setForm(f => ({ ...f, mg: e.target.value }))} className={inputCls} />
-          <input inputMode="decimal" placeholder="Qty" value={form.quantity_used} onChange={e => setQuantity(e.target.value)} className={inputCls} />
-          <input inputMode="decimal" placeholder="Cost" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: sanitizeQuantity(e.target.value) }))} className={inputCls} />
-        </div>
-        <textarea placeholder="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className={inputCls} />
-        <input placeholder="Logged by" value={form.logged_by} onChange={e => setForm(f => ({ ...f, logged_by: e.target.value }))} className={inputCls} />
-        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save Changes'}</button>
-      </form>
-    </Modal>
-  )
-}
-
-function EditFollowUpModal({ fu, onSaved, onClose }: { fu: FollowUp; onSaved: () => void; onClose: () => void }) {
-  const [form, setForm] = useState({
-    follow_up_type: fu.follow_up_type, due_date: fu.due_date,
-    status: fu.status, notes: fu.notes || '',
-    completion_notes: fu.completion_notes || '',
-    next_action: fu.next_action || '',
-    next_action_notes: fu.next_action_notes || '',
-  })
-  const [loading, setLoading] = useState(false)
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true)
-    const { error } = await supabase.from('follow_ups').update({
-      follow_up_type: form.follow_up_type, due_date: form.due_date, status: form.status,
-      notes: form.notes || null,
-      completion_notes: form.completion_notes || null,
-      next_action: form.next_action || null,
-      next_action_notes: form.next_action_notes || null,
-      completed_at: form.status === 'Done' ? (fu.completed_at || new Date().toISOString()) : null,
-    }).eq('id', fu.id)
-    setLoading(false)
-    if (!error) onSaved()
-  }
-  return (
-    <Modal title="Edit Follow-up" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        <select value={form.follow_up_type} onChange={e => setForm(f => ({ ...f, follow_up_type: e.target.value as any }))} className={inputCls}>
-          <option>Treatment</option><option>Vaccination</option><option>Deworming</option><option>Vet Consult</option>
-        </select>
-        <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className={inputCls} />
-        <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))} className={inputCls}>
-          <option>Pending</option><option>Done</option>
-        </select>
-        <input placeholder="Original notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className={inputCls} />
-        {form.status === 'Done' && (
-          <>
-            <textarea placeholder="Completion notes" value={form.completion_notes} onChange={e => setForm(f => ({ ...f, completion_notes: e.target.value }))} rows={2} className={inputCls} />
-            <select value={form.next_action} onChange={e => setForm(f => ({ ...f, next_action: e.target.value as any }))} className={inputCls}>
-              <option value="">No next action</option>
-              <option>Treatment Continued</option>
-              <option>Treatment Changed</option>
-              <option>Treatment Ended</option>
-              <option>Diagnostic Action</option>
-            </select>
-            {form.next_action && <input placeholder="Next action notes" value={form.next_action_notes} onChange={e => setForm(f => ({ ...f, next_action_notes: e.target.value }))} className={inputCls} />}
-          </>
-        )}
-        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save Changes'}</button>
-      </form>
-    </Modal>
-  )
-}
-
-function EditDiagnosticModal({ dx, onSaved, onClose }: { dx: Diagnostic; onSaved: () => void; onClose: () => void }) {
-  const [form, setForm] = useState({ diagnostic_type: dx.diagnostic_type, date: dx.date, notes: dx.notes || '', photo_url: dx.photo_url || '' })
-  const [loading, setLoading] = useState(false)
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true)
-    const { error } = await supabase.from('diagnostics').update({ ...form, photo_url: form.photo_url || null }).eq('id', dx.id)
-    setLoading(false)
-    if (!error) onSaved()
-  }
-  return (
-    <Modal title="Edit Diagnostic" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        <select value={form.diagnostic_type} onChange={e => setForm(f => ({ ...f, diagnostic_type: e.target.value }))} className={inputCls}>
-          <option>X-Ray</option><option>CBC</option><option>Blood Test</option><option>LFT</option><option>RFT</option><option>Ultrasound</option><option>Other</option>
-        </select>
-        <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={inputCls} />
-        <textarea placeholder="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className={inputCls} />
-        <PhotoUpload folder="diagnostics" label="Photo" currentUrl={form.photo_url} onUploaded={url => setForm(f => ({ ...f, photo_url: url }))} />
-        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save Changes'}</button>
-      </form>
-    </Modal>
-  )
 }
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
@@ -763,4 +475,380 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   )
 }
 
-const inputCls = 'w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400'
+// ─── Add forms ──────────────────────────────────────────────
+function FollowUpForm({ dogId, onSaved }: { dogId: string; onSaved: () => void }) {
+  const [form, setForm] = useState({ follow_up_type: 'Treatment', due_date: '', notes: '' })
+  const [loading, setLoading] = useState(false)
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true)
+    await supabase.from('follow_ups').insert([{ ...form, dog_id: dogId, status: 'Pending' }])
+    setLoading(false); onSaved()
+  }
+  return (
+    <form onSubmit={submit} className="bg-blue-50 rounded-2xl p-4 space-y-3">
+      <select value={form.follow_up_type} onChange={e => setForm(f => ({ ...f, follow_up_type: e.target.value }))} className={iCls}>
+        <option>Treatment</option><option>Vaccination</option><option>Deworming</option><option>Vet Consult</option><option>Diagnostic</option>
+      </select>
+      <input required type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className={iCls} />
+      <input type="text" placeholder="Notes (optional)" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className={iCls} />
+      <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60">{loading ? 'Saving...' : 'Add Follow-up'}</button>
+    </form>
+  )
+}
+
+function CompleteFollowUpForm({ followUp, onCompleted, onCancel }: { followUp: FollowUp; onCompleted: () => void; onCancel: () => void }) {
+  const [completionNotes, setCompletionNotes] = useState('')
+  const [selectedActions, setSelectedActions] = useState<string[]>([])
+  const [actionNotes, setActionNotes] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  function toggleAction(action: string) {
+    setSelectedActions(prev => prev.includes(action) ? prev.filter(a => a !== action) : [...prev, action])
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true)
+    await supabase.from('follow_ups').update({
+      status: 'Done',
+      completion_notes: completionNotes || null,
+      next_actions: selectedActions.length > 0 ? selectedActions : null,
+      next_action_notes: actionNotes || null,
+      completion_photo_url: photoUrl || null,
+      completed_at: new Date().toISOString(),
+    }).eq('id', followUp.id)
+    setLoading(false); onCompleted()
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-3 bg-white border border-green-200 rounded-xl p-3 space-y-3">
+      <p className="text-xs font-semibold text-gray-700">Complete this follow-up</p>
+      <textarea placeholder="What happened?" value={completionNotes} onChange={e => setCompletionNotes(e.target.value)} rows={2} className={iCls} />
+
+      <div>
+        <p className="text-xs font-semibold text-gray-600 mb-2">Next actions (select all that apply)</p>
+        <div className="flex flex-wrap gap-2">
+          {NEXT_ACTIONS.map(action => (
+            <button key={action} type="button" onClick={() => toggleAction(action)}
+              className={cn('px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                selectedActions.includes(action) ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200')}>
+              {action}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {selectedActions.length > 0 && (
+        <input type="text" placeholder="Details about next actions..." value={actionNotes} onChange={e => setActionNotes(e.target.value)} className={iCls} />
+      )}
+
+      <PhotoUpload folder="followups" label="Upload photo (optional)" onUploaded={setPhotoUrl} size="sm" />
+
+      <div className="flex gap-2">
+        <button type="submit" disabled={loading} className="flex-1 bg-green-600 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60">{loading ? 'Saving...' : 'Mark Done'}</button>
+        <button type="button" onClick={onCancel} className="px-3 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm">Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function DiagnosticForm({ dogId, onSaved }: { dogId: string; onSaved: () => void }) {
+  const [form, setForm] = useState({ diagnostic_type: 'X-Ray', date: format(new Date(), 'yyyy-MM-dd'), notes: '', photo_url: '', follow_up_date: '' })
+  const [loading, setLoading] = useState(false)
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true)
+    await supabase.from('diagnostics').insert([{
+      ...form, dog_id: dogId,
+      photo_url: form.photo_url || null,
+      follow_up_date: form.follow_up_date || null,
+    }])
+    setLoading(false); onSaved()
+  }
+  return (
+    <form onSubmit={submit} className="bg-gray-50 rounded-2xl p-4 space-y-3">
+      <select value={form.diagnostic_type} onChange={e => setForm(f => ({ ...f, diagnostic_type: e.target.value }))} className={iCls}>
+        <option>X-Ray</option><option>CBC</option><option>Blood Test</option><option>LFT</option><option>RFT</option><option>Ultrasound</option><option>Other</option>
+      </select>
+      <input required type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={iCls} />
+      <textarea placeholder="Notes / findings" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className={iCls} />
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Schedule follow-up reminder (optional)</label>
+        <input type="date" value={form.follow_up_date} onChange={e => setForm(f => ({ ...f, follow_up_date: e.target.value }))} className={iCls} />
+      </div>
+      <PhotoUpload folder="diagnostics" label="Upload report / image" onUploaded={url => setForm(f => ({ ...f, photo_url: url }))} />
+      <button type="submit" disabled={loading} className="w-full bg-gray-700 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60">{loading ? 'Saving...' : 'Log Diagnostic'}</button>
+    </form>
+  )
+}
+
+function PrescriptionForm({ dogId, medicines, onSaved }: { dogId: string; medicines: Medicine[]; onSaved: () => void }) {
+  const [items, setItems] = useState([{ medicine_id: '', medicine: null as Medicine | null, time_of_day: 'Both', dose: '', quantity: '', start_date: '', end_date: '' }])
+  const [notes, setNotes] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  function addItem() { setItems(p => [...p, { medicine_id: '', medicine: null, time_of_day: 'Both', dose: '', quantity: '', start_date: '', end_date: '' }]) }
+  function removeItem(i: number) { setItems(p => p.filter((_, idx) => idx !== i)) }
+  function updateItem(i: number, patch: any) { setItems(p => p.map((it, idx) => idx === i ? { ...it, ...patch } : it)) }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    const valid = items.filter(i => i.medicine_id)
+    if (!valid.length) return alert('Add at least one medicine')
+    setLoading(true)
+    await supabase.from('prescriptions').update({ is_active: false }).eq('dog_id', dogId)
+    const { data: rx, error } = await supabase.from('prescriptions').insert([{ dog_id: dogId, notes: notes || null, photo_url: photoUrl || null, is_active: true }]).select().single()
+    if (error || !rx) { setLoading(false); alert('Error'); return }
+    await supabase.from('prescription_items').insert(valid.map(i => ({
+      prescription_id: rx.id, medicine_id: i.medicine_id, time_of_day: i.time_of_day,
+      dose: i.dose || null, quantity: i.quantity ? parseFloat(i.quantity) : null,
+      start_date: i.start_date || null, end_date: i.end_date || null,
+    })))
+    setLoading(false); onSaved()
+  }
+
+  return (
+    <form onSubmit={submit} className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-4">
+      <p className="text-sm font-semibold text-amber-800">New Prescription</p>
+      {items.map((item, i) => (
+        <div key={i} className="bg-white rounded-xl p-3 space-y-2.5 border border-amber-100">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-600">Medicine {i + 1}</span>
+            {items.length > 1 && <button type="button" onClick={() => removeItem(i)} className="text-gray-400 hover:text-red-500"><X size={14} /></button>}
+          </div>
+          <MedicineSearch medicines={medicines} value={item.medicine_id} onChange={(id, med) => updateItem(i, { medicine_id: id, medicine: med })} />
+          <div className="grid grid-cols-3 gap-2">
+            {(['Morning', 'Evening', 'Both'] as const).map(tod => (
+              <button key={tod} type="button" onClick={() => updateItem(i, { time_of_day: tod })}
+                className={cn('py-1.5 rounded-lg text-[11px] font-medium border', item.time_of_day === tod ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200')}>
+                {tod}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input type="text" placeholder="Dose (1 tab, 5ml)" value={item.dose} onChange={e => updateItem(i, { dose: e.target.value })} className={iCls} />
+            <input type="text" inputMode="decimal" placeholder="Qty per dose" value={item.quantity} onChange={e => updateItem(i, { quantity: sanitizeQuantity(e.target.value) })} className={iCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><label className="block text-[10px] text-gray-500 mb-0.5">Start date</label><input type="date" value={item.start_date} onChange={e => updateItem(i, { start_date: e.target.value })} className={iCls} /></div>
+            <div><label className="block text-[10px] text-gray-500 mb-0.5">End date</label><input type="date" value={item.end_date} onChange={e => updateItem(i, { end_date: e.target.value })} className={iCls} /></div>
+          </div>
+        </div>
+      ))}
+      <button type="button" onClick={addItem} className="w-full py-2 border border-dashed border-amber-300 text-amber-700 rounded-xl text-sm">+ Add Medicine</button>
+      <textarea placeholder="Notes..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={iCls} />
+      <PhotoUpload folder="prescriptions" label="Upload prescription photo" onUploaded={setPhotoUrl} />
+      <button type="submit" disabled={loading} className="w-full bg-amber-600 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60">{loading ? 'Saving...' : 'Save Prescription'}</button>
+    </form>
+  )
+}
+
+// ─── Edit modals ─────────────────────────────────────────────
+function EditPrescriptionModal({ prescription, medicines, onSaved, onClose }: { prescription: Prescription; medicines: Medicine[]; onSaved: () => void; onClose: () => void }) {
+  const [items, setItems] = useState(
+    (prescription.items || []).map((i: any) => ({
+      id: i.id,
+      medicine_id: i.medicine_id,
+      medicine: i.medicine as Medicine | null,
+      time_of_day: i.time_of_day,
+      dose: i.dose || '',
+      quantity: i.quantity?.toString() || '',
+      start_date: i.start_date || '',
+      end_date: i.end_date || '',
+    }))
+  )
+  const [notes, setNotes] = useState(prescription.notes || '')
+  const [photoUrl, setPhotoUrl] = useState(prescription.photo_url || '')
+  const [loading, setLoading] = useState(false)
+
+  function addItem() { setItems(p => [...p, { id: '', medicine_id: '', medicine: null, time_of_day: 'Both', dose: '', quantity: '', start_date: '', end_date: '' }]) }
+  function removeItem(i: number) { setItems(p => p.filter((_, idx) => idx !== i)) }
+  function updateItem(i: number, patch: any) { setItems(p => p.map((it, idx) => idx === i ? { ...it, ...patch } : it)) }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    const valid = items.filter(i => i.medicine_id)
+    if (!valid.length) return alert('Add at least one medicine')
+    setLoading(true)
+    // Update prescription header
+    await supabase.from('prescriptions').update({ notes: notes || null, photo_url: photoUrl || null }).eq('id', prescription.id)
+    // Delete all existing items then re-insert
+    await supabase.from('prescription_items').delete().eq('prescription_id', prescription.id)
+    await supabase.from('prescription_items').insert(valid.map(i => ({
+      prescription_id: prescription.id,
+      medicine_id: i.medicine_id,
+      time_of_day: i.time_of_day,
+      dose: i.dose || null,
+      quantity: i.quantity ? parseFloat(i.quantity) : null,
+      start_date: i.start_date || null,
+      end_date: i.end_date || null,
+    })))
+    setLoading(false); onSaved()
+  }
+
+  return (
+    <Modal title="Edit Prescription" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        {items.map((item, i) => (
+          <div key={i} className="bg-gray-50 rounded-xl p-3 space-y-2.5 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-600">Medicine {i + 1}</span>
+              {items.length > 1 && <button type="button" onClick={() => removeItem(i)} className="text-gray-400 hover:text-red-500"><X size={14} /></button>}
+            </div>
+            <MedicineSearch medicines={medicines} value={item.medicine_id} onChange={(id, med) => updateItem(i, { medicine_id: id, medicine: med })} />
+            <div className="grid grid-cols-3 gap-2">
+              {(['Morning', 'Evening', 'Both'] as const).map(tod => (
+                <button key={tod} type="button" onClick={() => updateItem(i, { time_of_day: tod })}
+                  className={cn('py-1.5 rounded-lg text-[11px] font-medium border', item.time_of_day === tod ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200')}>
+                  {tod}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="text" placeholder="Dose" value={item.dose} onChange={e => updateItem(i, { dose: e.target.value })} className={iCls} />
+              <input type="text" inputMode="decimal" placeholder="Qty" value={item.quantity} onChange={e => updateItem(i, { quantity: sanitizeQuantity(e.target.value) })} className={iCls} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className="block text-[10px] text-gray-500 mb-0.5">Start</label><input type="date" value={item.start_date} onChange={e => updateItem(i, { start_date: e.target.value })} className={iCls} /></div>
+              <div><label className="block text-[10px] text-gray-500 mb-0.5">End</label><input type="date" value={item.end_date} onChange={e => updateItem(i, { end_date: e.target.value })} className={iCls} /></div>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={addItem} className="w-full py-2 border border-dashed border-gray-300 text-gray-600 rounded-xl text-sm">+ Add Medicine</button>
+        <textarea placeholder="Notes..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={iCls} />
+        <PhotoUpload folder="prescriptions" label="Prescription photo" currentUrl={photoUrl} onUploaded={setPhotoUrl} />
+        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save Changes'}</button>
+      </form>
+    </Modal>
+  )
+}
+
+function EditDogModal({ dog, onSaved, onClose }: { dog: Dog; onSaved: () => void; onClose: () => void }) {
+  const [form, setForm] = useState({ name: dog.name, patient_type: dog.patient_type, guardian_name: dog.guardian_name || '', guardian_contact: dog.guardian_contact || '', status: dog.status, photo_url: dog.photo_url || '' })
+  const [loading, setLoading] = useState(false)
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true)
+    await supabase.from('dogs').update({ ...form, photo_url: form.photo_url || null }).eq('id', dog.id)
+    setLoading(false); onSaved()
+  }
+  return (
+    <Modal title="Edit Patient" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <PhotoUpload folder="dogs" label="Dog Photo" currentUrl={form.photo_url} onUploaded={url => setForm(f => ({ ...f, photo_url: url }))} />
+        <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Name" className={iCls} />
+        <select value={form.patient_type} onChange={e => setForm(f => ({ ...f, patient_type: e.target.value as any }))} className={iCls}>
+          <option>IPD</option><option>Resident</option><option>Visit</option><option>House Visit</option>
+        </select>
+        <input value={form.guardian_name} onChange={e => setForm(f => ({ ...f, guardian_name: e.target.value }))} placeholder="Guardian name" className={iCls} />
+        <input value={form.guardian_contact} onChange={e => setForm(f => ({ ...f, guardian_contact: e.target.value }))} placeholder="Guardian contact" className={iCls} />
+        <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))} className={iCls}>
+          <option>Active</option><option>Discharged</option>
+        </select>
+        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save'}</button>
+      </form>
+    </Modal>
+  )
+}
+
+function EditTreatmentModal({ tx, medicines, onSaved, onClose }: { tx: TreatmentLog; medicines: Medicine[]; onSaved: () => void; onClose: () => void }) {
+  const [form, setForm] = useState({ medicine_id: tx.medicine_id || '', date: tx.date, time_of_day: tx.time_of_day, treatment_type: tx.treatment_type, mg: tx.mg || '', quantity_used: tx.quantity_used?.toString() || '', cost: tx.cost?.toString() || '', notes: tx.notes || '', logged_by: tx.logged_by || '' })
+  const [selMed, setSelMed] = useState<Medicine | null>(medicines.find(m => m.id === tx.medicine_id) ?? null)
+  const [loading, setLoading] = useState(false)
+  function setMedicine(id: string, med: Medicine | null) {
+    setSelMed(med)
+    const qty = parseFloat(form.quantity_used)
+    setForm(f => ({ ...f, medicine_id: id, mg: med?.power_mg ?? f.mg, cost: med?.cost_per_unit && !isNaN(qty) && qty > 0 ? (med.cost_per_unit * qty).toFixed(2) : f.cost }))
+  }
+  function setQuantity(raw: string) {
+    const s = sanitizeQuantity(raw); const qty = parseFloat(s)
+    setForm(f => ({ ...f, quantity_used: s, cost: selMed?.cost_per_unit && !isNaN(qty) && qty > 0 ? (selMed.cost_per_unit * qty).toFixed(2) : f.cost }))
+  }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true)
+    await supabase.from('treatment_logs').update({ medicine_id: form.medicine_id || null, date: form.date, time_of_day: form.time_of_day, treatment_type: form.treatment_type, mg: form.mg || null, quantity_used: form.quantity_used ? parseFloat(form.quantity_used) : null, cost: form.cost ? parseFloat(form.cost) : null, notes: form.notes || null, logged_by: form.logged_by || null }).eq('id', tx.id)
+    setLoading(false); onSaved()
+  }
+  return (
+    <Modal title="Edit Treatment" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <MedicineSearch medicines={medicines} value={form.medicine_id} onChange={setMedicine} />
+        <div className="grid grid-cols-2 gap-2">
+          <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={iCls} />
+          <select value={form.time_of_day} onChange={e => setForm(f => ({ ...f, time_of_day: e.target.value as TimeOfDay }))} className={iCls}><option>Morning</option><option>Evening</option></select>
+        </div>
+        <select value={form.treatment_type} onChange={e => setForm(f => ({ ...f, treatment_type: e.target.value as any }))} className={iCls}><option>General</option><option>Vaccination</option><option>Deworming</option></select>
+        <div className="grid grid-cols-3 gap-2">
+          <input placeholder="Dose" value={form.mg} onChange={e => setForm(f => ({ ...f, mg: e.target.value }))} className={iCls} />
+          <input inputMode="decimal" placeholder="Qty" value={form.quantity_used} onChange={e => setQuantity(e.target.value)} className={iCls} />
+          <input inputMode="decimal" placeholder="Cost" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: sanitizeQuantity(e.target.value) }))} className={iCls} />
+        </div>
+        <textarea placeholder="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className={iCls} />
+        <input placeholder="Logged by" value={form.logged_by} onChange={e => setForm(f => ({ ...f, logged_by: e.target.value }))} className={iCls} />
+        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save'}</button>
+      </form>
+    </Modal>
+  )
+}
+
+function EditFollowUpModal({ fu, onSaved, onClose }: { fu: FollowUp; onSaved: () => void; onClose: () => void }) {
+  const [form, setForm] = useState({ follow_up_type: fu.follow_up_type, due_date: fu.due_date, status: fu.status, notes: fu.notes || '', completion_notes: fu.completion_notes || '', next_actions: fu.next_actions || [] as string[], next_action_notes: fu.next_action_notes || '' })
+  const [loading, setLoading] = useState(false)
+  function toggleAction(a: string) { setForm(f => ({ ...f, next_actions: f.next_actions.includes(a) ? f.next_actions.filter(x => x !== a) : [...f.next_actions, a] })) }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true)
+    await supabase.from('follow_ups').update({ follow_up_type: form.follow_up_type, due_date: form.due_date, status: form.status, notes: form.notes || null, completion_notes: form.completion_notes || null, next_actions: form.next_actions.length > 0 ? form.next_actions : null, next_action_notes: form.next_action_notes || null, completed_at: form.status === 'Done' ? (fu.completed_at || new Date().toISOString()) : null }).eq('id', fu.id)
+    setLoading(false); onSaved()
+  }
+  return (
+    <Modal title="Edit Follow-up" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <select value={form.follow_up_type} onChange={e => setForm(f => ({ ...f, follow_up_type: e.target.value as any }))} className={iCls}><option>Treatment</option><option>Vaccination</option><option>Deworming</option><option>Vet Consult</option><option>Diagnostic</option></select>
+        <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className={iCls} />
+        <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))} className={iCls}><option>Pending</option><option>Done</option></select>
+        <input placeholder="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className={iCls} />
+        {form.status === 'Done' && (
+          <>
+            <textarea placeholder="Completion notes" value={form.completion_notes} onChange={e => setForm(f => ({ ...f, completion_notes: e.target.value }))} rows={2} className={iCls} />
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-2">Next actions</p>
+              <div className="flex flex-wrap gap-1.5">
+                {NEXT_ACTIONS.map(a => (
+                  <button key={a} type="button" onClick={() => toggleAction(a)}
+                    className={cn('px-2.5 py-1.5 rounded-lg text-xs font-medium border', form.next_actions.includes(a) ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200')}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <input placeholder="Next action notes" value={form.next_action_notes} onChange={e => setForm(f => ({ ...f, next_action_notes: e.target.value }))} className={iCls} />
+          </>
+        )}
+        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save'}</button>
+      </form>
+    </Modal>
+  )
+}
+
+function EditDiagnosticModal({ dx, onSaved, onClose }: { dx: Diagnostic; onSaved: () => void; onClose: () => void }) {
+  const [form, setForm] = useState({ diagnostic_type: dx.diagnostic_type, date: dx.date, notes: dx.notes || '', photo_url: dx.photo_url || '', follow_up_date: dx.follow_up_date || '' })
+  const [loading, setLoading] = useState(false)
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setLoading(true)
+    await supabase.from('diagnostics').update({ ...form, photo_url: form.photo_url || null, follow_up_date: form.follow_up_date || null }).eq('id', dx.id)
+    setLoading(false); onSaved()
+  }
+  return (
+    <Modal title="Edit Diagnostic" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <select value={form.diagnostic_type} onChange={e => setForm(f => ({ ...f, diagnostic_type: e.target.value }))} className={iCls}><option>X-Ray</option><option>CBC</option><option>Blood Test</option><option>LFT</option><option>RFT</option><option>Ultrasound</option><option>Other</option></select>
+        <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={iCls} />
+        <textarea placeholder="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className={iCls} />
+        <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Follow-up reminder date</label><input type="date" value={form.follow_up_date} onChange={e => setForm(f => ({ ...f, follow_up_date: e.target.value }))} className={iCls} /></div>
+        <PhotoUpload folder="diagnostics" label="Photo" currentUrl={form.photo_url} onUploaded={url => setForm(f => ({ ...f, photo_url: url }))} />
+        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save'}</button>
+      </form>
+    </Modal>
+  )
+}
+
+const iCls = 'w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400'
