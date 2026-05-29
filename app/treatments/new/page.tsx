@@ -52,6 +52,10 @@ function NewTreatmentInner() {
   const [followUpType, setFollowUpType] = useState('Treatment')
   const [followUpNotes, setFollowUpNotes] = useState('')
 
+  // Tracks whether the user has manually edited rows since the last auto-populate.
+  // When false, switching dog or time-of-day re-populates from the prescription.
+  const [userEdited, setUserEdited] = useState(false)
+
   useEffect(() => {
     async function load() {
       const [dogsRes, medsRes] = await Promise.all([
@@ -81,15 +85,18 @@ function NewTreatmentInner() {
     loadRx()
   }, [dogId])
 
-  // Auto-populate rows from active prescription items matching current time of day
+  // Auto-populate rows from active prescription items matching current time of day.
+  // Re-runs whenever dog, time-of-day, or prescription changes — UNLESS the user has
+  // manually edited the rows (so we don't clobber their work).
   useEffect(() => {
     if (!activeRx?.items) return
+    if (userEdited) return
+
     const items = (activeRx.items as PrescriptionItem[]).filter(i =>
       i.time_of_day === timeOfDay || i.time_of_day === 'Both'
     )
-    // Only auto-populate if rows are empty or single empty row
-    const hasContent = rows.some(r => r.medicine_id)
-    if (!hasContent && items.length > 0) {
+
+    if (items.length > 0) {
       const newRows = items.map(item => {
         const med = item.medicine ?? medicines.find(m => m.id === item.medicine_id) ?? null
         const qty = item.quantity?.toString() ?? '1'
@@ -105,21 +112,31 @@ function NewTreatmentInner() {
         }
       })
       setRows(newRows)
+    } else {
+      // No prescription items for this time of day — clear back to one empty row
+      setRows([newRow()])
     }
-  }, [activeRx, timeOfDay])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeRx, timeOfDay, userEdited])  // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDogChange(newId: string) {
     setDogId(newId)
     setSelectedDog(dogs.find(d => d.id === newId) ?? null)
-    // Reset rows to one empty row so auto-populate can re-run
+    setUserEdited(false)        // allow auto-populate to run for the new dog
     setRows([newRow()])
   }
 
+  function handleTimeOfDayChange(newTod: TimeOfDay) {
+    setTimeOfDay(newTod)
+    setUserEdited(false)        // allow auto-populate to re-run for the new time of day
+  }
+
   function updateRow(i: number, patch: Partial<DraftRow>) {
+    setUserEdited(true)
     setRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r))
   }
 
   function setRowMedicine(i: number, medId: string, med: Medicine | null) {
+    setUserEdited(true)
     const qty = parseFloat(rows[i].quantity_used)
     const cost = med?.cost_per_unit && !isNaN(qty) && qty > 0
       ? (med.cost_per_unit * qty).toFixed(2)
@@ -132,6 +149,7 @@ function NewTreatmentInner() {
   }
 
   function setRowQuantity(i: number, raw: string) {
+    setUserEdited(true)
     const sanitized = sanitizeQuantity(raw)
     const qty = parseFloat(sanitized)
     const med = rows[i].medicine
@@ -141,8 +159,8 @@ function NewTreatmentInner() {
     updateRow(i, { quantity_used: sanitized, cost })
   }
 
-  function addRow() { setRows(prev => [...prev, newRow()]) }
-  function removeRow(i: number) { setRows(prev => prev.filter((_, idx) => idx !== i)) }
+  function addRow() { setUserEdited(true); setRows(prev => [...prev, newRow()]) }
+  function removeRow(i: number) { setUserEdited(true); setRows(prev => prev.filter((_, idx) => idx !== i)) }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -217,7 +235,7 @@ function NewTreatmentInner() {
               { val: 'Morning', icon: <Sun size={15} />, label: 'Morning' },
               { val: 'Evening', icon: <Moon size={15} />, label: 'Evening' },
             ] as { val: TimeOfDay; icon: React.ReactNode; label: string }[]).map(t => (
-              <button key={t.val} type="button" onClick={() => setTimeOfDay(t.val)}
+              <button key={t.val} type="button" onClick={() => handleTimeOfDayChange(t.val)}
                 className={cn('flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-medium border transition-all',
                   timeOfDay === t.val ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200')}>
                 {t.icon} {t.label}

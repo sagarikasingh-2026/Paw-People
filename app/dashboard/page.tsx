@@ -78,7 +78,9 @@ export default function Dashboard() {
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">{format(new Date(), 'EEEE, dd MMMM yyyy')}</p>
         </div>
-        <div className="md:hidden w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-lg">🐾</div>
+        <Link href="/settings" className="md:hidden">
+          <img src="/logo.jpg" alt="Settings" className="w-10 h-10 rounded-full object-cover" />
+        </Link>
       </div>
 
       <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6">

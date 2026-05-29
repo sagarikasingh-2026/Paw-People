@@ -44,6 +44,7 @@ export default function DogProfilePage() {
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false)
   const [editingPrescription, setEditingPrescription] = useState<Prescription | null>(null)
   const [editingDog, setEditingDog] = useState(false)
+  const [showDanger, setShowDanger] = useState(false)
 
   useEffect(() => { load() }, [id]) // eslint-disable-line
 
@@ -74,6 +75,12 @@ export default function DogProfilePage() {
   async function handleDischarge() {
     if (!confirm('Mark this patient as discharged?')) return
     await supabase.from('dogs').update({ status: 'Discharged' }).eq('id', id)
+    router.push('/dogs')
+  }
+
+  async function handleDeleteDog() {
+    if (!confirm(`Permanently delete ${dog?.name}? This will also delete all their treatments, follow-ups, diagnostics, and prescriptions. This cannot be undone.`)) return
+    await supabase.from('dogs').delete().eq('id', id)
     router.push('/dogs')
   }
 
@@ -226,10 +233,32 @@ export default function DogProfilePage() {
               </div>
             )}
             {dog.status === 'Active' && (
-              <button onClick={handleDischarge} className="w-full border border-red-200 text-red-600 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50">
+              <button onClick={handleDischarge} className="w-full border border-orange-200 text-orange-600 py-2.5 rounded-xl text-sm font-medium hover:bg-orange-50">
                 Mark as Discharged
               </button>
             )}
+
+            {/* Danger zone — separated and collapsed so Delete can't be hit by accident */}
+            <div className="mt-8 pt-4 border-t border-gray-100">
+              {!showDanger ? (
+                <button onClick={() => setShowDanger(true)} className="text-xs text-gray-400 hover:text-gray-600">
+                  Advanced options
+                </button>
+              ) : (
+                <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
+                  <p className="text-xs font-semibold text-red-700 mb-1">Danger zone</p>
+                  <p className="text-[11px] text-red-500 mb-3">Deleting a patient permanently removes them and all their records. This cannot be undone.</p>
+                  <div className="flex gap-2">
+                    <button onClick={handleDeleteDog} className="flex-1 bg-red-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-red-700">
+                      Delete Patient
+                    </button>
+                    <button onClick={() => setShowDanger(false)} className="px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-600 text-sm">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -735,15 +764,30 @@ function EditDogModal({ dog, onSaved, onClose }: { dog: Dog; onSaved: () => void
     <Modal title="Edit Patient" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         <PhotoUpload folder="dogs" label="Dog Photo" currentUrl={form.photo_url} onUploaded={url => setForm(f => ({ ...f, photo_url: url }))} />
-        <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Name" className={iCls} />
-        <select value={form.patient_type} onChange={e => setForm(f => ({ ...f, patient_type: e.target.value as any }))} className={iCls}>
-          <option>IPD</option><option>Resident</option><option>Visit</option><option>House Visit</option>
-        </select>
-        <input value={form.guardian_name} onChange={e => setForm(f => ({ ...f, guardian_name: e.target.value }))} placeholder="Guardian name" className={iCls} />
-        <input value={form.guardian_contact} onChange={e => setForm(f => ({ ...f, guardian_contact: e.target.value }))} placeholder="Guardian contact" className={iCls} />
-        <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))} className={iCls}>
-          <option>Active</option><option>Discharged</option>
-        </select>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Name</label>
+          <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Dog's name" className={iCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Patient Type</label>
+          <select value={form.patient_type} onChange={e => setForm(f => ({ ...f, patient_type: e.target.value as any }))} className={iCls}>
+            <option>IPD</option><option>Resident</option><option>Visit</option><option>House Visit</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Guardian Name</label>
+          <input value={form.guardian_name} onChange={e => setForm(f => ({ ...f, guardian_name: e.target.value }))} placeholder="Guardian / caretaker" className={iCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Guardian Contact</label>
+          <input value={form.guardian_contact} onChange={e => setForm(f => ({ ...f, guardian_contact: e.target.value }))} placeholder="Phone number" className={iCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Status</label>
+          <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))} className={iCls}>
+            <option>Active</option><option>Discharged</option>
+          </select>
+        </div>
         <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save'}</button>
       </form>
     </Modal>
