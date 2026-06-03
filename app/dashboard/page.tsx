@@ -1,18 +1,22 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { FollowUp, Dog, Medicine } from '@/types'
 import { formatDate, getFollowUpUrgency, patientTypeBadgeColor, cn } from '@/lib/utils'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
-import { AlertCircle, CheckCircle2, Clock, ChevronRight, Package, TrendingUp, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Clock, ChevronRight, Package, TrendingUp, X, SlidersHorizontal, ArrowUpDown, Check } from 'lucide-react'
 import Link from 'next/link'
 
 type TimeFilter = 'today' | 'week' | 'month' | 'all' | 'custom'
-type PatientFilter = 'All' | 'IPD' | 'Resident' | 'Visit' | 'House Visit'
-type FollowUpTypeFilter = 'All' | 'Treatment' | 'Vaccination' | 'Deworming' | 'Vet Consult' | 'Diagnostic'
+type PatientType = 'IPD' | 'Resident' | 'Visit' | 'House Visit'
+type FUType = 'Treatment' | 'Vaccination' | 'Deworming' | 'Vet Consult' | 'Diagnostic'
 type OverdueSort = 'longest' | 'recent'
 type UsageRange = 'week' | 'month'
 interface MedUsage { name: string; total_qty: number; total_cost: number }
+
+const PATIENT_TYPES: PatientType[] = ['IPD', 'Resident', 'Visit', 'House Visit']
+const FU_TYPES: FUType[] = ['Treatment', 'Vaccination', 'Deworming', 'Vet Consult', 'Diagnostic']
+const TIME_OPTIONS: [TimeFilter, string][] = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['all', 'All'], ['custom', 'Custom range']]
 
 export default function Dashboard() {
   const [followUps, setFollowUps] = useState<FollowUp[]>([])
@@ -24,19 +28,33 @@ export default function Dashboard() {
 
   // Follow-up filters
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('today')
-  const [patientTypeFilter, setPatientTypeFilter] = useState<PatientFilter>('All')
-  const [typeFilter, setTypeFilter] = useState<FollowUpTypeFilter>('All')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
+  const [selectedPatientTypes, setSelectedPatientTypes] = useState<PatientType[]>([])  // empty = all
+  const [selectedFUTypes, setSelectedFUTypes] = useState<FUType[]>([])                 // empty = all
   const [showOverdue, setShowOverdue] = useState(false)
   const [overdueSort, setOverdueSort] = useState<OverdueSort>('longest')
 
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
   const [showAllStock, setShowAllStock] = useState(false)
   const [showAllFollowUps, setShowAllFollowUps] = useState(false)
 
+  const filtersRef = useRef<HTMLDivElement>(null)
+  const sortRef = useRef<HTMLDivElement>(null)
   const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => { load() }, [usageRange])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) setFiltersOpen(false)
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) setSortOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
 
   async function load() {
     const start = usageRange === 'week' ? format(startOfWeek(new Date()), 'yyyy-MM-dd') : format(startOfMonth(new Date()), 'yyyy-MM-dd')
@@ -49,9 +67,9 @@ export default function Dashboard() {
       supabase.from('treatment_logs').select('*, medicine:medicines(name)').gte('date', start).lte('date', end),
       supabase.from('diagnostics').select('*, dog:dogs(*)').not('follow_up_date', 'is', null).order('follow_up_date'),
     ])
-    const dxFollowUps = (dxRes.data || []).map((dx) => ({
+    const dxFollowUps = (dxRes.data || []).map((dx: any) => ({
       id: 'dx-' + dx.id, dog_id: dx.dog_id, follow_up_type: 'Diagnostic',
-      due_date: dx.follow_up_date, status: 'Pending', notes: dx.diagnostic_type + ' reminder',
+      due_date: dx.follow_up_date, status: 'Pending', notes: (dx.diagnostic_type || 'Diagnostic') + ' reminder',
       completion_notes: null, completed_at: null, next_actions: null, next_action_notes: null, completion_photo_url: null,
       created_at: dx.created_at, updated_at: dx.created_at, dog: dx.dog,
     }))
@@ -76,23 +94,24 @@ export default function Dashboard() {
   const weekOut = format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd')
   const monthOut = format(endOfMonth(new Date()), 'yyyy-MM-dd')
 
-  // "Due today" = due today OR overdue (matches what's actionable now)
-  const dueTodayCount = followUps.filter(f => f.due_date <= today).length
+  // Split metrics: due exactly today vs overdue (past)
+  const dueTodayCount = followUps.filter(f => f.due_date === today).length
   const overdueFollowUps = followUps.filter(f => f.due_date < today)
+  const overdueCount = overdueFollowUps.length
 
-  // Apply type + patient filters (shared by both normal and overdue views)
+  // Shared type + patient multi-select filter
   function applyTypePatient(list: FollowUp[]) {
     return list.filter(f => {
-      const typeOk = typeFilter === 'All' || f.follow_up_type === typeFilter
+      const typeOk = selectedFUTypes.length === 0 || selectedFUTypes.includes(f.follow_up_type as FUType)
       const dog = f.dog as Dog | undefined
-      const patientOk = patientTypeFilter === 'All' || dog?.patient_type === patientTypeFilter
+      const patientOk = selectedPatientTypes.length === 0 || (dog && selectedPatientTypes.includes(dog.patient_type as PatientType))
       return typeOk && patientOk
     })
   }
 
-  // Normal (non-overdue) view by time window
+  // Normal view by time window (default: today shows today + overdue surfaced)
   const timeFiltered = followUps.filter(f => {
-    if (timeFilter === 'today') return f.due_date <= today          // today + overdue surfaced as "due"
+    if (timeFilter === 'today') return f.due_date <= today
     if (timeFilter === 'week') return f.due_date <= weekOut
     if (timeFilter === 'month') return f.due_date <= monthOut
     if (timeFilter === 'custom') {
@@ -100,17 +119,26 @@ export default function Dashboard() {
       if (customEnd && f.due_date > customEnd) return false
       return true
     }
-    return true // 'all'
+    return true
   })
   const displayedFollowUps = applyTypePatient(timeFiltered)
 
-  // Overdue view (independent of time/type/patient filters except sort)
   const sortedOverdue = [...overdueFollowUps].sort((a, b) =>
     overdueSort === 'longest' ? a.due_date.localeCompare(b.due_date) : b.due_date.localeCompare(a.due_date)
   )
 
-  const filteredDogs = activeDogs
+  const activeFilterCount = selectedFUTypes.length + selectedPatientTypes.length + (timeFilter !== 'today' ? 1 : 0)
   const totalSpend = usage.reduce((sum, u) => sum + u.total_cost, 0)
+
+  function togglePatient(p: PatientType) {
+    setSelectedPatientTypes(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
+  }
+  function toggleFU(t: FUType) {
+    setSelectedFUTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
+  }
+  function clearFilters() {
+    setSelectedPatientTypes([]); setSelectedFUTypes([]); setTimeFilter('today'); setCustomStart(''); setCustomEnd('')
+  }
 
   return (
     <div className="pb-24 md:pb-0 px-4 md:px-8 pt-6 md:pt-0">
@@ -124,81 +152,108 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6">
+      {/* 4 split metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
         <StatCard value={activeDogs.length} label="Active patients" tone="blue" />
         <StatCard value={dueTodayCount} label="Due today" tone="orange" />
+        <StatCard value={overdueCount} label="Overdue" tone="red" onClick={() => setShowOverdue(true)} />
         <StatCard value={lowStockMeds.length} label="Low stock" tone="amber" />
       </div>
 
       <div className="md:grid md:grid-cols-3 md:gap-6">
         <div className="md:col-span-2 space-y-6">
 
-          {/* Follow-ups with filters */}
+          {/* Follow-ups */}
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-2">
               <h2 className="font-semibold text-gray-900">Follow-ups</h2>
+              {!showOverdue && (
+                <div className="flex items-center gap-2">
+                  {/* Filters dropdown */}
+                  <div className="relative" ref={filtersRef}>
+                    <button onClick={() => setFiltersOpen(o => !o)}
+                      className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border',
+                        activeFilterCount > 0 ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-600 border-gray-200')}>
+                      <SlidersHorizontal size={13} />
+                      Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                    </button>
+                    {filtersOpen && (
+                      <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-lg border border-gray-100 p-4 z-30 max-h-[70vh] overflow-y-auto">
+                        <div className="mb-4">
+                          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Time</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {TIME_OPTIONS.map(([val, label]) => (
+                              <button key={val} onClick={() => setTimeFilter(val)}
+                                className={cn('px-2.5 py-1 rounded-lg text-[11px] font-medium border',
+                                  timeFilter === val ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200')}>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                          {timeFilter === 'custom' && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="flex-1 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-none" />
+                              <span className="text-xs text-gray-400">to</span>
+                              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="flex-1 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-none" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="mb-4">
+                          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Follow-up type</p>
+                          <div className="space-y-1">
+                            {FU_TYPES.map(t => (
+                              <CheckRow key={t} label={t} checked={selectedFUTypes.includes(t)} onToggle={() => toggleFU(t)} />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mb-3">
+                          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Patient type</p>
+                          <div className="space-y-1">
+                            {PATIENT_TYPES.map(p => (
+                              <CheckRow key={p} label={p} checked={selectedPatientTypes.includes(p)} onToggle={() => togglePatient(p)} />
+                            ))}
+                          </div>
+                        </div>
+                        {activeFilterCount > 0 && (
+                          <button onClick={clearFilters} className="w-full py-2 text-xs text-gray-500 font-medium border border-gray-200 rounded-lg hover:bg-gray-50">Clear all</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Show Overdue pill + (when active) sort */}
+            {/* Show overdue pill (no count inside) + sort dropdown when active */}
             <div className="flex items-center gap-2 flex-wrap mb-3">
               <button onClick={() => setShowOverdue(s => !s)}
                 className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
                   showOverdue ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-600 border-red-300 hover:bg-red-50')}>
                 {showOverdue && <X size={13} />}
-                Show overdue{overdueFollowUps.length > 0 ? ` (${overdueFollowUps.length})` : ''}
+                Show overdue
               </button>
               {showOverdue && overdueFollowUps.length > 0 && (
-                <div className="flex gap-1">
-                  {([['longest', 'Longest overdue'], ['recent', 'Most recent']] as [OverdueSort, string][]).map(([val, label]) => (
-                    <button key={val} onClick={() => setOverdueSort(val)}
-                      className={cn('px-2.5 py-1 rounded-lg text-[11px] font-medium',
-                        overdueSort === val ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600')}>
-                      {label}
-                    </button>
-                  ))}
+                <div className="relative" ref={sortRef}>
+                  <button onClick={() => setSortOpen(o => !o)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-gray-600 border border-gray-200">
+                    <ArrowUpDown size={13} />
+                    {overdueSort === 'longest' ? 'Longest overdue' : 'Most recent'}
+                  </button>
+                  {sortOpen && (
+                    <div className="absolute left-0 mt-2 w-44 bg-white rounded-xl shadow-lg border border-gray-100 p-1 z-30">
+                      {([['longest', 'Longest overdue first'], ['recent', 'Most recent first']] as [OverdueSort, string][]).map(([val, label]) => (
+                        <button key={val} onClick={() => { setOverdueSort(val); setSortOpen(false) }}
+                          className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs text-left hover:bg-gray-50',
+                            overdueSort === val ? 'text-blue-600 font-semibold' : 'text-gray-600')}>
+                          {label}
+                          {overdueSort === val && <Check size={13} />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-
-            {/* Normal filters — hidden while viewing overdue to keep things clean */}
-            {!showOverdue && (
-              <div className="space-y-2 mb-3">
-                <div className="flex gap-1.5 flex-wrap">
-                  {([['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['all', 'All'], ['custom', 'Custom']] as [TimeFilter, string][]).map(([val, label]) => (
-                    <button key={val} onClick={() => setTimeFilter(val)}
-                      className={cn('px-3 py-1.5 rounded-lg text-xs font-medium',
-                        timeFilter === val ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600')}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                {timeFilter === 'custom' && (
-                  <div className="flex items-center gap-2">
-                    <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="flex-1 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-none focus:border-blue-400" />
-                    <span className="text-xs text-gray-400">to</span>
-                    <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="flex-1 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-none focus:border-blue-400" />
-                  </div>
-                )}
-                <div className="flex gap-1.5 flex-wrap">
-                  {(['All', 'Treatment', 'Vaccination', 'Deworming', 'Vet Consult', 'Diagnostic'] as FollowUpTypeFilter[]).map(t => (
-                    <button key={t} onClick={() => setTypeFilter(t)}
-                      className={cn('px-2.5 py-1 rounded-lg text-[11px] font-medium',
-                        typeFilter === t ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500')}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-1.5 flex-wrap">
-                  {(['All', 'IPD', 'Resident', 'Visit', 'House Visit'] as PatientFilter[]).map(p => (
-                    <button key={p} onClick={() => setPatientTypeFilter(p)}
-                      className={cn('px-2.5 py-1 rounded-lg text-[11px] font-medium',
-                        patientTypeFilter === p ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500')}>
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* The list */}
             {loading ? (
@@ -207,7 +262,7 @@ export default function Dashboard() {
               sortedOverdue.length === 0 ? (
                 <div className="bg-green-50 rounded-2xl p-4 flex items-center gap-3">
                   <CheckCircle2 size={20} className="text-green-600" />
-                  <p className="text-sm text-green-700">You're all caught up — no overdue follow-ups! Tap "Show overdue" again to go back.</p>
+                  <p className="text-sm text-green-700">You're all caught up — no overdue follow-ups. Tap "Show overdue" to go back.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -279,7 +334,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Low stock alert — amber, below follow-ups + usage */}
+          {/* Low stock — amber, below */}
           {lowStockMeds.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-2">
@@ -314,7 +369,7 @@ export default function Dashboard() {
             <Link href="/dogs" className="text-xs text-blue-600 font-medium">See all</Link>
           </div>
           <div className="space-y-2">
-            {filteredDogs.slice(0, 5).map(dog => (
+            {activeDogs.slice(0, 5).map(dog => (
               <Link key={dog.id} href={`/dogs/${dog.id}`} className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3 hover:bg-gray-100">
                 <div className="flex items-center gap-3">
                   {dog.photo_url ? (
@@ -333,7 +388,7 @@ export default function Dashboard() {
                 <ChevronRight size={16} className="text-gray-400" />
               </Link>
             ))}
-            {filteredDogs.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No patients</p>}
+            {activeDogs.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No patients</p>}
           </div>
         </div>
       </div>
@@ -341,13 +396,29 @@ export default function Dashboard() {
   )
 }
 
-function StatCard({ value, label, tone }: { value: number; label: string; tone: 'blue' | 'orange' | 'amber' }) {
-  const tones = { blue: 'bg-blue-50 text-blue-700', orange: 'bg-orange-50 text-orange-700', amber: 'bg-amber-50 text-amber-700' }
+function CheckRow({ label, checked, onToggle }: { label: string; checked: boolean; onToggle: () => void }) {
   return (
-    <div className={cn('rounded-2xl p-3 md:p-4', tones[tone])}>
+    <button onClick={onToggle} className="w-full flex items-center gap-2.5 py-1.5 text-left">
+      <span className={cn('w-4 h-4 rounded border flex items-center justify-center flex-shrink-0',
+        checked ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300')}>
+        {checked && <Check size={11} className="text-white" />}
+      </span>
+      <span className="text-sm text-gray-700">{label}</span>
+    </button>
+  )
+}
+
+function StatCard({ value, label, tone, onClick }: { value: number; label: string; tone: 'blue' | 'orange' | 'amber' | 'red'; onClick?: () => void }) {
+  const tones = {
+    blue: 'bg-blue-50 text-blue-700', orange: 'bg-orange-50 text-orange-700',
+    amber: 'bg-amber-50 text-amber-700', red: 'bg-red-50 text-red-700',
+  }
+  const Comp: any = onClick ? 'button' : 'div'
+  return (
+    <Comp onClick={onClick} className={cn('rounded-2xl p-3 md:p-4 text-left w-full', tones[tone], onClick && 'hover:brightness-95 cursor-pointer')}>
       <p className="text-2xl md:text-3xl font-bold">{value}</p>
       <p className="text-xs mt-0.5 opacity-75">{label}</p>
-    </div>
+    </Comp>
   )
 }
 

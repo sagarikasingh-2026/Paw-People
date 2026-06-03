@@ -1,13 +1,14 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Medicine } from '@/types'
 import { cn, sanitizeQuantity } from '@/lib/utils'
 import { Plus, AlertTriangle, Package, ChevronDown, ChevronUp, X, Edit2, Trash2, Search } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 
 type StockFilter = 'all' | 'low' | 'ok' | 'out'
 
-export default function InventoryPage() {
+function InventoryPageInner() {
   const [medicines, setMedicines] = useState<Medicine[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -18,8 +19,23 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [showAllLowStock, setShowAllLowStock] = useState(false)
+  const searchParams = useSearchParams()
 
   useEffect(() => { load() }, [])
+
+  // When arriving from a dashboard low-stock link (?focus=<id>), expand + scroll + open restock
+  useEffect(() => {
+    const focus = searchParams.get('focus')
+    if (focus && medicines.length > 0) {
+      setExpandedId(focus)
+      setRestockId(focus)        // open the restock input directly
+      setRestockQty('')
+      setTimeout(() => {
+        const el = document.getElementById(`med-${focus}`)
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+  }, [searchParams, medicines])
 
   async function load() {
     const { data } = await supabase.from('medicines').select('*').order('name')
@@ -78,7 +94,16 @@ export default function InventoryPage() {
           </div>
           <div className="flex flex-wrap gap-1.5">
             {(showAllLowStock ? lowStock : lowStock.slice(0, 8)).map(m => (
-              <span key={m.id} className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">{m.name}: {m.quantity_in_stock}</span>
+              <button key={m.id} onClick={() => {
+                setExpandedId(m.id); setRestockId(m.id); setRestockQty('')
+                setTimeout(() => {
+                  const el = document.getElementById(`med-${m.id}`)
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                }, 50)
+              }}
+                className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium hover:bg-amber-200 cursor-pointer">
+                {m.name}: {m.quantity_in_stock}
+              </button>
             ))}
           </div>
           <p className="text-[11px] text-amber-600 mt-2">Alert level defaults to 5. Edit any item (✏️) to change its alert level, or set it to 0 to stop alerts for that item.</p>
@@ -121,7 +146,7 @@ export default function InventoryPage() {
           const stockPct = Math.min(100, (med.quantity_in_stock / Math.max(1, med.low_stock_threshold * 4)) * 100)
 
           return (
-            <div key={med.id} className={cn('rounded-2xl border',
+            <div key={med.id} id={`med-${med.id}`} className={cn('rounded-2xl border',
               isOut ? 'border-red-300 bg-red-50' : isLow ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50')}>
               <button onClick={() => setExpandedId(isExpanded ? null : med.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
                 <div className="flex-1 min-w-0">
@@ -286,3 +311,12 @@ function EditMedicineModal({ med, onSaved, onClose }: { med: Medicine; onSaved: 
 }
 
 const inputCls = 'w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400'
+
+
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-300">Loading...</div>}>
+      <InventoryPageInner />
+    </Suspense>
+  )
+}
