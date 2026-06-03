@@ -238,15 +238,37 @@ function EditMedicineModal({ med, onSaved, onClose }: { med: Medicine; onSaved: 
           <button onClick={onClose} className="p-2 rounded-xl bg-gray-100"><X size={16} /></button>
         </div>
         <form onSubmit={submit} className="space-y-3">
-          <input required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
-          <input placeholder="Composition" value={form.composition} onChange={e => setForm(f => ({ ...f, composition: e.target.value }))} className={inputCls} />
-          <input placeholder="Power/Mg" value={form.power_mg} onChange={e => setForm(f => ({ ...f, power_mg: e.target.value }))} className={inputCls} />
-          <div className="grid grid-cols-3 gap-2">
-            <input inputMode="decimal" placeholder="Qty" value={form.quantity_in_stock} onChange={e => setForm(f => ({ ...f, quantity_in_stock: sanitizeQuantity(e.target.value) }))} className={inputCls} />
-            <input inputMode="decimal" placeholder="Cost" value={form.cost_per_unit} onChange={e => setForm(f => ({ ...f, cost_per_unit: sanitizeQuantity(e.target.value) }))} className={inputCls} />
-            <input inputMode="numeric" placeholder="Alert" value={form.low_stock_threshold} onChange={e => setForm(f => ({ ...f, low_stock_threshold: e.target.value.replace(/\D/g, '') }))} className={inputCls} />
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Medicine Name</label>
+            <input required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
           </div>
-          <input placeholder="Issued by" value={form.issued_by} onChange={e => setForm(f => ({ ...f, issued_by: e.target.value }))} className={inputCls} />
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Composition</label>
+            <input placeholder="e.g. Cefotaxime Sodium" value={form.composition} onChange={e => setForm(f => ({ ...f, composition: e.target.value }))} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Power / Strength</label>
+            <input placeholder="e.g. 500 mg" value={form.power_mg} onChange={e => setForm(f => ({ ...f, power_mg: e.target.value }))} className={inputCls} />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Quantity</label>
+              <input inputMode="decimal" placeholder="Qty" value={form.quantity_in_stock} onChange={e => setForm(f => ({ ...f, quantity_in_stock: sanitizeQuantity(e.target.value) }))} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Cost (₹)</label>
+              <input inputMode="decimal" placeholder="Cost" value={form.cost_per_unit} onChange={e => setForm(f => ({ ...f, cost_per_unit: sanitizeQuantity(e.target.value) }))} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Alert at</label>
+              <input inputMode="numeric" placeholder="5" value={form.low_stock_threshold} onChange={e => setForm(f => ({ ...f, low_stock_threshold: e.target.value.replace(/\D/g, '') }))} className={inputCls} />
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400 -mt-1">"Alert at" sets the low-stock warning level. Set to 0 to never get a low-stock alert for this item.</p>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Issued By</label>
+            <input placeholder="Optional" value={form.issued_by} onChange={e => setForm(f => ({ ...f, issued_by: e.target.value }))} className={inputCls} />
+          </div>
           <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-2xl font-semibold text-sm disabled:opacity-60">{loading ? 'Saving...' : 'Save Changes'}</button>
         </form>
       </div>

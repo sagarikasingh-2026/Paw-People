@@ -61,6 +61,9 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+  const [showAllStock, setShowAllStock] = useState(false)
+  const [showAllFollowUps, setShowAllFollowUps] = useState(false)
+
   const todayFollowUps = followUps.filter(f => f.due_date <= today)
   const filteredDogs = patientFilter === 'All' ? activeDogs : activeDogs.filter(d => d.patient_type === patientFilter)
 
@@ -94,12 +97,20 @@ export default function Dashboard() {
 
           {lowStockMeds.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Package size={16} className="text-red-600" />
-                <span className="text-sm font-semibold text-red-700">Low stock alert</span>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Package size={16} className="text-red-600" />
+                  <span className="text-sm font-semibold text-red-700">Low stock alert</span>
+                  <span className="text-xs bg-red-200 text-red-800 px-1.5 py-0.5 rounded-full font-bold">{lowStockMeds.length}</span>
+                </div>
+                {lowStockMeds.length > 5 && (
+                  <button onClick={() => setShowAllStock(s => !s)} className="text-xs text-red-600 font-medium">
+                    {showAllStock ? 'Show less' : `+${lowStockMeds.length - 5} more`}
+                  </button>
+                )}
               </div>
               <div className="grid md:grid-cols-2 gap-1">
-                {lowStockMeds.map(m => (
+                {(showAllStock ? lowStockMeds : lowStockMeds.slice(0, 5)).map(m => (
                   <div key={m.id} className="flex justify-between items-center py-1">
                     <span className="text-sm text-red-800">{m.name}</span>
                     <span className="text-xs font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">{m.quantity_in_stock} left</span>
@@ -109,6 +120,41 @@ export default function Dashboard() {
               <Link href="/inventory" className="text-xs text-red-600 font-medium mt-2 inline-block">Manage inventory →</Link>
             </div>
           )}
+
+
+          {/* Follow-ups with filters */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-gray-900">Follow-ups</h2>
+            </div>
+            <div className="flex gap-1.5 flex-wrap mb-3">
+              {(['all', 'overdue', 'today', 'week'] as FilterType[]).map(f => (
+                <button key={f} onClick={() => setFollowUpFilter(f)}
+                  className={cn('px-3 py-1.5 rounded-lg text-xs font-medium',
+                    followUpFilter === f ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600')}>
+                  {f === 'all' ? 'All' : f === 'overdue' ? 'Overdue' : f === 'today' ? 'Today' : '7 days'}
+                </button>
+              ))}
+            </div>
+            {loading ? (
+              <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)}</div>
+            ) : displayedFollowUps.length === 0 ? (
+              <div className="bg-green-50 rounded-2xl p-4 flex items-center gap-3">
+                <CheckCircle2 size={20} className="text-green-600" />
+                <p className="text-sm text-green-700">All clear!</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(showAllFollowUps ? displayedFollowUps : displayedFollowUps.slice(0, 5)).map(f => <FollowUpCard key={f.id} followUp={f} />)}
+                {displayedFollowUps.length > 5 && (
+                  <button onClick={() => setShowAllFollowUps(s => !s)}
+                    className="w-full py-2 text-xs text-blue-600 font-medium bg-blue-50 rounded-xl hover:bg-blue-100">
+                    {showAllFollowUps ? 'Show less' : `Show ${displayedFollowUps.length - 5} more`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Medicine usage */}
           <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
@@ -150,32 +196,6 @@ export default function Dashboard() {
                 <span className="text-xs text-blue-600">Total spend this {usageRange}</span>
                 <span className="text-sm font-bold text-blue-900">₹{totalSpend.toFixed(0)}</span>
               </div>
-            )}
-          </div>
-
-          {/* Follow-ups with filters */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-gray-900">Follow-ups</h2>
-            </div>
-            <div className="flex gap-1.5 flex-wrap mb-3">
-              {(['all', 'overdue', 'today', 'week'] as FilterType[]).map(f => (
-                <button key={f} onClick={() => setFollowUpFilter(f)}
-                  className={cn('px-3 py-1.5 rounded-lg text-xs font-medium',
-                    followUpFilter === f ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600')}>
-                  {f === 'all' ? 'All' : f === 'overdue' ? 'Overdue' : f === 'today' ? 'Today' : '7 days'}
-                </button>
-              ))}
-            </div>
-            {loading ? (
-              <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)}</div>
-            ) : displayedFollowUps.length === 0 ? (
-              <div className="bg-green-50 rounded-2xl p-4 flex items-center gap-3">
-                <CheckCircle2 size={20} className="text-green-600" />
-                <p className="text-sm text-green-700">All clear!</p>
-              </div>
-            ) : (
-              <div className="space-y-2">{displayedFollowUps.map(f => <FollowUpCard key={f.id} followUp={f} />)}</div>
             )}
           </div>
         </div>
