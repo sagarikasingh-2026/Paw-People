@@ -17,6 +17,7 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<Medicine | null>(null)
   const [search, setSearch] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
+  const [showAllLowStock, setShowAllLowStock] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -63,16 +64,24 @@ export default function InventoryPage() {
       </div>
 
       {lowStock.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-3 mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={16} className="text-red-600" />
-            <span className="text-sm font-semibold text-red-700">{lowStock.length} medicine{lowStock.length > 1 ? 's' : ''} running low</span>
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} className="text-amber-600" />
+              <span className="text-sm font-semibold text-amber-800">{lowStock.length} item{lowStock.length > 1 ? 's' : ''} at or below alert level</span>
+            </div>
+            {lowStock.length > 8 && (
+              <button onClick={() => setShowAllLowStock(s => !s)} className="text-xs text-amber-700 font-medium flex-shrink-0">
+                {showAllLowStock ? 'Show less' : `+${lowStock.length - 8} more`}
+              </button>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {lowStock.map(m => (
-              <span key={m.id} className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">{m.name}: {m.quantity_in_stock}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {(showAllLowStock ? lowStock : lowStock.slice(0, 8)).map(m => (
+              <span key={m.id} className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">{m.name}: {m.quantity_in_stock}</span>
             ))}
           </div>
+          <p className="text-[11px] text-amber-600 mt-2">Alert level defaults to 5. Edit any item (✏️) to change its alert level, or set it to 0 to stop alerts for that item.</p>
         </div>
       )}
 
@@ -113,21 +122,21 @@ export default function InventoryPage() {
 
           return (
             <div key={med.id} className={cn('rounded-2xl border',
-              isOut ? 'border-red-300 bg-red-50' : isLow ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50')}>
+              isOut ? 'border-red-300 bg-red-50' : isLow ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50')}>
               <button onClick={() => setExpandedId(isExpanded ? null : med.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-sm text-gray-900 truncate">{med.name}</span>
-                    {isOut ? <span className="text-[10px] bg-red-200 text-red-800 px-1.5 py-0.5 rounded font-bold">OUT</span> : isLow && <AlertTriangle size={13} className="text-red-500 flex-shrink-0" />}
+                    {isOut ? <span className="text-[10px] bg-red-200 text-red-800 px-1.5 py-0.5 rounded font-bold">OUT</span> : isLow && <AlertTriangle size={13} className="text-amber-500 flex-shrink-0" />}
                   </div>
                   {med.composition && <p className="text-[11px] text-gray-400 mt-0.5">{med.composition}</p>}
                   <div className="flex items-center gap-3 mt-1">
-                    <span className={cn('text-base font-bold', isLow ? 'text-red-700' : 'text-gray-700')}>{med.quantity_in_stock}</span>
+                    <span className={cn('text-base font-bold', isOut ? 'text-red-700' : isLow ? 'text-amber-700' : 'text-gray-700')}>{med.quantity_in_stock}</span>
                     <span className="text-xs text-gray-400">units in stock</span>
                     {med.power_mg && <span className="text-xs text-gray-400">{med.power_mg}</span>}
                   </div>
                   <div className="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden w-40">
-                    <div className={cn('h-full rounded-full', isLow ? 'bg-red-400' : 'bg-green-400')} style={{ width: `${stockPct}%` }} />
+                    <div className={cn('h-full rounded-full', isOut ? 'bg-red-400' : isLow ? 'bg-amber-400' : 'bg-green-400')} style={{ width: `${stockPct}%` }} />
                   </div>
                 </div>
                 {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
